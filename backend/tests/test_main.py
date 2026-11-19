@@ -70,7 +70,7 @@ def test_get_room(client: TestClient) -> None:
 
 def test_get_room_counts_players(client: TestClient) -> None:
     code = client.post("/rooms", json=VALID_BODY).json()["code"]
-    room = client.app.state.registry.get(code)
+    room = client.app.state.registry.get(code).room
     room.add_player("Omar")
     room.add_player("Mahima")
     assert client.get(f"/rooms/{code}").json()["player_count"] == 2
@@ -83,7 +83,7 @@ def test_get_room_accepts_lowercase_code(client: TestClient) -> None:
 
 def test_get_room_shows_started_state(client: TestClient) -> None:
     created = client.post("/rooms", json=VALID_BODY).json()
-    room = client.app.state.registry.get(created["code"])
+    room = client.app.state.registry.get(created["code"]).room
     room.add_player("Omar")
     room.start(created["host_token"])
     assert client.get(f"/rooms/{created['code']}").json()["state"] == "QUESTION"

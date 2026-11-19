@@ -112,7 +112,8 @@ class Ranking:
     score: int
 
 
-def _key(name: str) -> str:
+def name_key(name: str) -> str:
+    """Names are unique case-insensitively: 'Omar' and ' omar ' are the same player."""
     return name.strip().casefold()
 
 
@@ -147,6 +148,11 @@ class Room:
         _validate_questions(self.questions, self.time_limit)
         self.questions = list(self.questions)
 
+    @property
+    def question_index(self) -> int:
+        """Index of the current (or just revealed) question. 0 while in LOBBY."""
+        return self._index
+
     # --- host -------------------------------------------------------------
 
     def is_host(self, token: str | None) -> bool:
@@ -170,17 +176,17 @@ class Room:
             raise RoomError(
                 ErrorCode.NAME_INVALID, f"name must be 1-{MAX_NAME_LENGTH} printable characters"
             )
-        if _key(display) in self._players:
+        if name_key(display) in self._players:
             raise RoomError(ErrorCode.NAME_TAKEN, "that name is already taken")
         if len(self._players) >= MAX_PLAYERS:
             raise RoomError(ErrorCode.ROOM_FULL, "the room is full")
         player = Player(display)
-        self._players[_key(display)] = player
+        self._players[name_key(display)] = player
         return player
 
     def remove_player(self, name: str) -> None:
         """Player left or disconnected. In LOBBY they are removed; later they keep their score."""
-        key = _key(name)
+        key = name_key(name)
         if key not in self._players:
             return
         if self.state == State.LOBBY:
@@ -191,7 +197,7 @@ class Room:
     def kick(self, token: str | None, name: str) -> bool:
         self._require_host(token)
         self._require_state(State.LOBBY)
-        return self._players.pop(_key(name), None) is not None
+        return self._players.pop(name_key(name), None) is not None
 
     def lobby_names(self) -> list[str]:
         return [p.name for p in self._players.values()]
@@ -229,13 +235,13 @@ class Room:
     def submit_answer(self, name: str, question_id: int, choice: int) -> AnswerCount:
         self._require_state(State.QUESTION, State.REVEAL)
         self._check_question_id(question_id)
-        player = self._players.get(_key(name))
+        player = self._players.get(name_key(name))
         if player is None or not player.connected:
             raise RoomError(ErrorCode.WRONG_STATE, "not a player in this game")
         options = self.questions[self._index].options
         if not _is_int(choice) or not 0 <= choice < len(options):
             raise RoomError(ErrorCode.BAD_MESSAGE, "choice is not a valid option index")
-        key = _key(name)
+        key = name_key(name)
         if key in self._answers:
             raise RoomError(ErrorCode.ALREADY_ANSWERED, "you already answered this question")
         time_used = self.clock() - self._started_at
