@@ -22,7 +22,9 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
  
 - `app/main.py`: FastAPI app, REST routes
 - `app/ws.py`: WebSocket endpoint, message routing
-- `app/rooms.py`: Room, Player, game state machine, timers
+- `app/rooms.py`: Room, Player, game state machine (pure, no I/O)
+- `app/live.py`: LiveRoom: a Room's connections, broadcasts, timers and lock
+- `app/registry.py`: in-memory room registry (code -> room), code generation
 - `app/scoring.py`: pure scoring functions (no I/O)
 - `app/models.py`: Pydantic schemas for every WebSocket message
 - `tests/`: mirrors app/
