@@ -1,18 +1,17 @@
 import { BrowserRouter, Route, Routes } from 'react-router'
+import { JoinPage } from './pages/JoinPage'
 
-function Placeholder() {
-  return (
-    <main className="grid min-h-dvh place-items-center px-4">
-      <p className="text-muted">QuizCircuit: screens coming next.</p>
-    </main>
-  )
+// Temporary: the next step connects this to the game server.
+function handleJoin(code: string, name: string) {
+  console.info('join', { code, name })
 }
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="*" element={<Placeholder />} />
+        <Route path="/" element={<JoinPage onJoin={handleJoin} />} />
+        <Route path="/join/:code" element={<JoinPage onJoin={handleJoin} />} />
       </Routes>
     </BrowserRouter>
   )

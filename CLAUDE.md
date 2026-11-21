@@ -38,6 +38,13 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 - Room state machine: LOBBY -> QUESTION -> REVEAL -> (next QUESTION or FINISHED). No other transitions.
 - Joins are rejected once the game has started.
 - Never send the correct answer to players before the REVEAL message.
+## Frontend
+ 
+- Commands (run from frontend/): `npm run dev`, `npm test`, `npm run build`, `npm run lint`.
+- Colours and fonts come from the `@theme` tokens in `src/index.css`. Never use raw hex values in components.
+- Every screen must work on both a phone and a laptop. Build phone-first, then adapt from the `sm` breakpoint (640px) up.
+- Build one screen per step, with tests, and stop for review before the next.
+ 
 ## Working style
  
 - Small, focused changes. One task per commit.
