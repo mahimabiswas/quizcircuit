@@ -15,9 +15,10 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 ## Commands (run from backend/)
  
 - Install: `uv sync`
-- Run: `uv run uvicorn app.main:app --reload`
-- Test: `uv run pytest`
-- Lint/format: `uv run ruff check . && uv run ruff format .`
+- Run: `uv run python -m uvicorn app.main:app --reload`
+- Test: `uv run python -m pytest`
+- Lint/format: `uv run python -m ruff check . && uv run python -m ruff format .`
+- Always go through `python -m`: on this Windows machine an Application Control policy blocks the tool launchers uv creates in `.venv\Scripts` (`uvicorn.exe`, `pytest.exe`, `ruff.exe`).
 ## Layout
  
 - `app/main.py`: FastAPI app, REST routes

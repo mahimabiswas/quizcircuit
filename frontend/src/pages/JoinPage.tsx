@@ -1,6 +1,8 @@
 import { useState, type SubmitEvent } from 'react'
 import { useParams } from 'react-router'
 import { Logo } from '../components/Logo'
+import { joinErrorText } from '../game/joinErrors'
+import type { JoinErrorCode } from '../game/reducer'
 
 // Same limit as the backend (docs/protocol.md: names are 1-20 characters).
 const MAX_NAME_LENGTH = 20
@@ -8,9 +10,13 @@ const MAX_NAME_LENGTH = 20
 interface JoinPageProps {
   /** Called with the cleaned-up code and name when the player taps "Join game". */
   onJoin: (code: string, name: string) => void
+  /** True while waiting for the server to accept the join. */
+  busy?: boolean
+  /** Why the last join failed, if it did. */
+  error?: JoinErrorCode | null
 }
 
-export function JoinPage({ onJoin }: JoinPageProps) {
+export function JoinPage({ onJoin, busy = false, error = null }: JoinPageProps) {
   // An invite link like /join/QC-4821 fills in the code for the player.
   const params = useParams()
   const [code, setCode] = useState(params.code?.toUpperCase() ?? '')
@@ -18,7 +24,7 @@ export function JoinPage({ onJoin }: JoinPageProps) {
 
   const cleanCode = code.trim()
   const cleanName = name.trim()
-  const canJoin = cleanCode !== '' && cleanName !== ''
+  const canJoin = cleanCode !== '' && cleanName !== '' && !busy
 
   function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault() // stop the browser reloading the page
@@ -67,12 +73,22 @@ export function JoinPage({ onJoin }: JoinPageProps) {
               />
             </label>
 
+            {/* role="alert" makes screen readers read the error out as soon as it appears. */}
+            {error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-wrong/40 bg-wrong/10 px-3 py-2 text-sm text-wrong"
+              >
+                {joinErrorText(error)}
+              </p>
+            )}
+
             <button
               type="submit"
               disabled={!canJoin}
               className="mt-2 rounded-lg bg-accent py-3 font-semibold hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Join game
+              {busy ? 'Joining…' : 'Join game'}
             </button>
           </form>
         </div>
