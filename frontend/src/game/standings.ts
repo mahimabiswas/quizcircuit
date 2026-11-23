@@ -1,6 +1,6 @@
 // Where a player stands after a question. Pure functions, tested in standings.test.ts.
 
-import type { PlayerResult } from '../protocol'
+import type { PlayerResult, Ranking } from '../protocol'
 
 /**
  * A player's rank by total score: 1 + the number of players strictly ahead.
@@ -32,4 +32,22 @@ export function ordinal(n: number): string {
 /** 1840 -> "1,840" */
 export function formatPoints(points: number): string {
   return points.toLocaleString('en-US')
+}
+
+/**
+ * "Priya takes the win with 7,420 points", or for a tie
+ * "Priya and Tom share the win with 7,420 points". Null if nobody played.
+ */
+export function winnerLine(rankings: Ranking[]): string | null {
+  const winners = rankings.filter((r) => r.rank === 1)
+  if (winners.length === 0) return null
+  const points = `${formatPoints(winners[0].score)} points`
+  if (winners.length === 1) return `${winners[0].name} takes the win with ${points}`
+  return `${listNames(winners.map((w) => w.name))} share the win with ${points}`
+}
+
+/** ["A"] -> "A", ["A", "B"] -> "A and B", ["A", "B", "C"] -> "A, B and C" */
+function listNames(names: string[]): string {
+  if (names.length === 1) return names[0]
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }

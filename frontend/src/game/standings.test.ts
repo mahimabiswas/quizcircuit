@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PlayerResult } from '../protocol'
-import { formatPoints, ordinal, rankOf } from './standings'
+import { formatPoints, ordinal, rankOf, winnerLine } from './standings'
 
 function result(name: string, total: number): PlayerResult {
   return { name, correct: false, points: 0, total }
@@ -38,6 +38,41 @@ describe('ordinal', () => {
     [50, '50th'],
   ])('%i -> %s', (n, expected) => {
     expect(ordinal(n)).toBe(expected)
+  })
+})
+
+describe('winnerLine', () => {
+  it('names a single winner', () => {
+    expect(
+      winnerLine([
+        { rank: 1, name: 'Priya', score: 7420 },
+        { rank: 2, name: 'Tom', score: 6980 },
+      ]),
+    ).toBe('Priya takes the win with 7,420 points')
+  })
+
+  it('names two tied winners', () => {
+    expect(
+      winnerLine([
+        { rank: 1, name: 'Priya', score: 900 },
+        { rank: 1, name: 'Tom', score: 900 },
+        { rank: 3, name: 'Mei', score: 0 },
+      ]),
+    ).toBe('Priya and Tom share the win with 900 points')
+  })
+
+  it('names three or more tied winners', () => {
+    expect(
+      winnerLine([
+        { rank: 1, name: 'A', score: 0 },
+        { rank: 1, name: 'B', score: 0 },
+        { rank: 1, name: 'C', score: 0 },
+      ]),
+    ).toBe('A, B and C share the win with 0 points')
+  })
+
+  it('returns null when nobody played', () => {
+    expect(winnerLine([])).toBeNull()
   })
 })
 

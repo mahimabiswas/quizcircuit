@@ -1,4 +1,5 @@
 import { Logo } from '../components/Logo'
+import { RankingList } from '../components/RankingList'
 import { formatPoints, ordinal } from '../game/standings'
 import type { Ranking } from '../protocol'
 
@@ -35,27 +36,9 @@ export function LeaderboardPage({ name, rankings, onLeave }: LeaderboardPageProp
             </div>
           )}
 
-          <ol className="mt-8 divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface sm:bg-surface-raised">
-            {rankings.map((r) => {
-              const isMe = r.name === name
-              return (
-                <li
-                  key={r.name}
-                  aria-current={isMe ? 'true' : undefined}
-                  className={`flex items-center gap-3 px-4 py-3 text-sm ${isMe ? 'bg-accent/15' : ''}`}
-                >
-                  <span className="w-5 text-muted">{r.rank}</span>
-                  <span className={`flex-1 ${isMe ? 'font-semibold' : ''}`}>
-                    {r.name}
-                    {isMe && ' (you)'}
-                  </span>
-                  <span className={isMe ? 'font-semibold text-accent' : 'text-muted'}>
-                    {formatPoints(r.score)}
-                  </span>
-                </li>
-              )
-            })}
-          </ol>
+          <div className="mt-8">
+            <RankingList rankings={rankings} me={name} />
+          </div>
 
           {/* mt-auto keeps the button at the bottom of a phone screen; pt-6 keeps a gap
               above it when the list is long. */}

@@ -94,6 +94,15 @@ describe('HostGame', () => {
     expect(fake.last.sent).toContainEqual({ type: 'next' })
   })
 
+  it('shows the final leaderboard when the game ends', () => {
+    openLobby(['Priya'])
+    receive(QUESTION)
+    receive({ type: 'leaderboard', rankings: [{ rank: 1, name: 'Priya', score: 950 }] })
+    expect(screen.getByRole('heading', { name: 'Final leaderboard' })).toBeInTheDocument()
+    expect(screen.getByText('Priya takes the win with 950 points')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Start a new game' })).toHaveAttribute('href', '/host')
+  })
+
   it('explains when this tab is not the host', () => {
     renderHost('QC-9999') // no token saved for this room
     expect(screen.getByRole('heading', { name: "You're not the host of this game" })).toBeInTheDocument()

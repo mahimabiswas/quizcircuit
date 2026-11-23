@@ -8,6 +8,7 @@ import { getHostToken } from '../game/hostToken'
 import type { GameState } from '../game/reducer'
 import type { SocketFactory } from '../game/socket'
 import { useGame } from '../game/useGame'
+import { HostLeaderboardPage } from './HostLeaderboardPage'
 import { InvitePage } from './InvitePage'
 
 const HOST_NAME = 'Host'
@@ -71,7 +72,11 @@ export function HostGame({ createSocket }: HostGameProps) {
     )
   }
 
-  if (state.phase === 'question' || state.phase === 'reveal' || state.phase === 'finished') {
+  if (state.phase === 'finished' && state.rankings) {
+    return <HostLeaderboardPage rankings={state.rankings} />
+  }
+
+  if (state.phase === 'question' || state.phase === 'reveal') {
     return <TemporaryHostView state={state} onNext={next} />
   }
 
@@ -99,54 +104,41 @@ function Notice({ title, children }: { title: string; children?: ReactNode }) {
 
 /**
  * TEMPORARY: a bare-bones view of the game for the host, with a Next button.
- * The host question, reveal and leaderboard screens replace it.
+ * The host question and reveal screens replace it.
  */
 function TemporaryHostView({ state, onNext }: { state: GameState; onNext: () => void }) {
-  const { question, answerCount, reveal, rankings } = state
+  const { question, answerCount, reveal } = state
   const isLast = question !== null && question.index + 1 === question.total
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
       <Logo />
-      {state.phase === 'finished' && rankings ? (
+      {question && (
         <section className="rounded-2xl border border-border bg-surface p-6">
-          <h1 className="text-xl font-bold">Game over</h1>
-          <ol className="mt-4 space-y-1 text-sm">
-            {rankings.map((r) => (
-              <li key={r.name}>
-                {r.rank}. {r.name}: {r.score}
-              </li>
-            ))}
-          </ol>
-        </section>
-      ) : (
-        question && (
-          <section className="rounded-2xl border border-border bg-surface p-6">
-            <p className="text-sm text-muted">
-              Question {question.index + 1} of {question.total}
+          <p className="text-sm text-muted">
+            Question {question.index + 1} of {question.total}
+          </p>
+          <h1 className="mt-2 text-xl font-bold">{question.text}</h1>
+          {state.phase === 'question' && (
+            <p className="mt-4 text-muted">
+              {answerCount ? `${answerCount.answered} of ${answerCount.total}` : '0'} answered
             </p>
-            <h1 className="mt-2 text-xl font-bold">{question.text}</h1>
-            {state.phase === 'question' && (
-              <p className="mt-4 text-muted">
-                {answerCount ? `${answerCount.answered} of ${answerCount.total}` : '0'} answered
+          )}
+          {state.phase === 'reveal' && reveal && (
+            <>
+              <p className="mt-4">
+                Answer: <strong className="text-correct">{question.options[reveal.correct]}</strong>
               </p>
-            )}
-            {state.phase === 'reveal' && reveal && (
-              <>
-                <p className="mt-4">
-                  Answer: <strong className="text-correct">{question.options[reveal.correct]}</strong>
-                </p>
-                <button
-                  type="button"
-                  onClick={onNext}
-                  className="mt-6 rounded-lg bg-accent px-6 py-3 font-semibold hover:bg-accent-hover"
-                >
-                  {isLast ? 'Show final results' : 'Next question'}
-                </button>
-              </>
-            )}
-          </section>
-        )
+              <button
+                type="button"
+                onClick={onNext}
+                className="mt-6 rounded-lg bg-accent px-6 py-3 font-semibold hover:bg-accent-hover"
+              >
+                {isLast ? 'Show final results' : 'Next question'}
+              </button>
+            </>
+          )}
+        </section>
       )}
     </div>
   )
