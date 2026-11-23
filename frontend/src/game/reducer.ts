@@ -1,13 +1,20 @@
 // The player's game state. A pure function of what has happened so far:
 // no sockets, no React. useGame.ts feeds it events.
 
-import type { AnswerCountMessage, ErrorCode, QuestionMessage, ServerMessage } from '../protocol'
+import type {
+  AnswerCountMessage,
+  ErrorCode,
+  QuestionMessage,
+  RevealMessage,
+  ServerMessage,
+} from '../protocol'
 
 export type Phase =
   | 'idle' // showing the join form
   | 'connecting' // Join pressed, waiting for the server to accept
   | 'lobby' // joined, waiting for the host to start
   | 'question' // a question is open
+  | 'reveal' // the question ended: showing the right answer and scores
   | 'disconnected' // the connection dropped after joining
 
 /** Server error codes, plus two the client detects itself. */
@@ -29,6 +36,8 @@ export interface GameState {
   /** True once the server confirms it has the answer. */
   answered: boolean
   answerCount: AnswerCountMessage | null
+  /** The results of the question that just ended. */
+  reveal: RevealMessage | null
 }
 
 export type GameAction =
@@ -47,6 +56,7 @@ export const initialState: GameState = {
   myChoice: null,
   answered: false,
   answerCount: null,
+  reveal: null,
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
@@ -61,7 +71,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, myChoice: action.choice, error: null }
 
     case 'closed':
-      if (state.phase === 'lobby' || state.phase === 'question') {
+      if (state.phase === 'lobby' || state.phase === 'question' || state.phase === 'reveal') {
         return { ...state, phase: 'disconnected', error: 'CONNECTION_LOST' }
       }
       if (state.phase === 'connecting') {
@@ -90,8 +100,13 @@ function onMessage(state: GameState, message: ServerMessage, receivedAt: number)
         myChoice: null,
         answered: false,
         answerCount: null,
+        reveal: null,
         error: null,
       }
+
+    case 'reveal':
+      // Keep the question and this player's choice: the reveal screen shows both.
+      return { ...state, phase: 'reveal', reveal: message, error: null }
 
     case 'answer_ack':
       return { ...state, answered: true }

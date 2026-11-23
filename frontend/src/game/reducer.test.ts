@@ -176,8 +176,35 @@ describe('gameReducer: questions', () => {
 
   it('ignores message types it does not handle yet', () => {
     const before = run(connecting, joined, server(question()))
-    const reveal = { type: 'reveal', question_id: 0 } as unknown as ServerMessage
-    expect(gameReducer(before, server(reveal))).toBe(before)
+    const leaderboard = { type: 'leaderboard', rankings: [] } as unknown as ServerMessage
+    expect(gameReducer(before, server(leaderboard))).toBe(before)
+  })
+
+  it('shows the reveal, keeping the question and this player’s choice', () => {
+    const reveal = server({
+      type: 'reveal',
+      question_id: 0,
+      correct: 0,
+      distribution: [1, 0, 0, 0],
+      results: [{ name: 'Priya', correct: true, points: 920, total: 920 }],
+    })
+    const state = run(connecting, joined, server(question()), { type: 'answer_sent', choice: 0 }, reveal)
+    expect(state.phase).toBe('reveal')
+    expect(state.reveal?.correct).toBe(0)
+    expect(state.question?.id).toBe(0)
+    expect(state.myChoice).toBe(0)
+  })
+
+  it('clears the reveal when the next question arrives', () => {
+    const state = run(
+      connecting,
+      joined,
+      server(question()),
+      server({ type: 'reveal', question_id: 0, correct: 0, distribution: [0, 0, 0, 0], results: [] }),
+      server(question({ id: 1, index: 1 })),
+    )
+    expect(state.phase).toBe('question')
+    expect(state.reveal).toBeNull()
   })
 
   it('reports a lost connection if the socket closes during a question', () => {

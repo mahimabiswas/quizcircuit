@@ -63,6 +63,22 @@ export interface AnswerCountMessage {
   total: number
 }
 
+export interface PlayerResult {
+  name: string
+  correct: boolean
+  points: number // scored on this question
+  total: number // score so far, including this question
+}
+
+/** Sent when a question ends. The first time the correct answer is revealed. */
+export interface RevealMessage {
+  type: 'reveal'
+  question_id: number
+  correct: number // index of the correct option
+  distribution: number[] // distribution[i] = how many players picked option i
+  results: PlayerResult[] // one per player, including players who did not answer
+}
+
 export interface ErrorMessage {
   type: 'error'
   code: ErrorCode
@@ -75,4 +91,5 @@ export type ServerMessage =
   | QuestionMessage
   | AnswerAckMessage
   | AnswerCountMessage
+  | RevealMessage
   | ErrorMessage

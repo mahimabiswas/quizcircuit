@@ -1,11 +1,12 @@
 // The player's side of the game: picks which screen to show from the game state.
-// Each later screen (reveal, leaderboard) adds a branch here.
+// Each later screen (the leaderboard) adds a branch here.
 
 import { useGame } from '../game/useGame'
 import { useSecondsLeft } from '../game/useSecondsLeft'
 import type { SocketFactory } from '../game/socket'
 import { JoinPage } from './JoinPage'
 import { QuestionPage } from './QuestionPage'
+import { RevealPage } from './RevealPage'
 import { WaitingPage } from './WaitingPage'
 
 interface PlayerGameProps {
@@ -29,6 +30,17 @@ export function PlayerGame({ createSocket }: PlayerGameProps) {
         answerCount={state.answerCount}
         error={state.error}
         onAnswer={(choice) => answer(question.id, choice)}
+      />
+    )
+  }
+
+  if (state.phase === 'reveal' && state.reveal && state.question && state.name !== null) {
+    return (
+      <RevealPage
+        question={state.question}
+        reveal={state.reveal}
+        name={state.name}
+        myChoice={state.myChoice}
       />
     )
   }

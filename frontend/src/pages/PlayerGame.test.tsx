@@ -60,6 +60,20 @@ const server = {
     act(() =>
       fake.last.receive({ type: 'answer_count', question_id: questionId, answered, total }),
     ),
+  /** Question ends: option 1 (Green) was right; Priya scored `points`. */
+  reveal: (questionId: number, points: number) =>
+    act(() =>
+      fake.last.receive({
+        type: 'reveal',
+        question_id: questionId,
+        correct: 1,
+        distribution: [0, 1, 1, 0],
+        results: [
+          { name: 'Priya', correct: points > 0, points, total: points },
+          { name: 'Tom', correct: false, points: 0, total: 0 },
+        ],
+      }),
+    ),
 }
 
 /** Join as Priya and land in the lobby. */
@@ -231,6 +245,36 @@ describe('PlayerGame: questions', () => {
     expect(screen.getByRole('heading', { name: 'Next one' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Green/ })).toBeEnabled()
     expect(screen.queryByText('Answer locked in')).not.toBeInTheDocument()
+  })
+
+  it('shows the reveal when the question ends', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    server.ack(0)
+    server.reveal(0, 950)
+    expect(screen.getByRole('heading', { name: 'Correct!' })).toBeInTheDocument()
+    expect(screen.getByText('+950')).toBeInTheDocument()
+    expect(screen.getByText('1st of 2')).toBeInTheDocument()
+  })
+
+  it('shows the right answer to a player who got it wrong', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Red/ }))
+    server.reveal(0, 0)
+    expect(screen.getByRole('heading', { name: 'Not quite' })).toBeInTheDocument()
+    expect(screen.getByText('Green')).toBeInTheDocument()
+  })
+
+  it('moves from the reveal to the next question when the host presses Next', async () => {
+    await joinLobby()
+    server.question(0)
+    server.reveal(0, 0)
+    server.question(1, 'Second question')
+    expect(screen.getByRole('heading', { name: 'Second question' })).toBeInTheDocument()
   })
 
   it('goes back to the form if the connection drops mid-question', async () => {
