@@ -1,10 +1,11 @@
 // The player's side of the game: picks which screen to show from the game state.
-// Each later screen (the leaderboard) adds a branch here.
+// join -> waiting -> question <-> reveal -> leaderboard
 
 import { useGame } from '../game/useGame'
 import { useSecondsLeft } from '../game/useSecondsLeft'
 import type { SocketFactory } from '../game/socket'
 import { JoinPage } from './JoinPage'
+import { LeaderboardPage } from './LeaderboardPage'
 import { QuestionPage } from './QuestionPage'
 import { RevealPage } from './RevealPage'
 import { WaitingPage } from './WaitingPage'
@@ -15,7 +16,7 @@ interface PlayerGameProps {
 }
 
 export function PlayerGame({ createSocket }: PlayerGameProps) {
-  const { state, join, answer } = useGame(createSocket)
+  const { state, join, answer, leave } = useGame(createSocket)
   // Hooks must run on every render, so this runs even when no question is open.
   const secondsLeft = useSecondsLeft(state.question, state.clockOffset)
 
@@ -32,6 +33,10 @@ export function PlayerGame({ createSocket }: PlayerGameProps) {
         onAnswer={(choice) => answer(question.id, choice)}
       />
     )
+  }
+
+  if (state.phase === 'finished' && state.rankings && state.name !== null) {
+    return <LeaderboardPage name={state.name} rankings={state.rankings} onDone={leave} />
   }
 
   if (state.phase === 'reveal' && state.reveal && state.question && state.name !== null) {

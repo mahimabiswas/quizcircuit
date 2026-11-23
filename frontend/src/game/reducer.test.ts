@@ -174,10 +174,10 @@ describe('gameReducer: questions', () => {
     expect(state.answerCount).toBeNull()
   })
 
-  it('ignores message types it does not handle yet', () => {
+  it('ignores message types it does not know', () => {
     const before = run(connecting, joined, server(question()))
-    const leaderboard = { type: 'leaderboard', rankings: [] } as unknown as ServerMessage
-    expect(gameReducer(before, server(leaderboard))).toBe(before)
+    const unknown = { type: 'something_new' } as unknown as ServerMessage
+    expect(gameReducer(before, server(unknown))).toBe(before)
   })
 
   it('shows the reveal, keeping the question and this player’s choice', () => {
@@ -205,6 +205,38 @@ describe('gameReducer: questions', () => {
     )
     expect(state.phase).toBe('question')
     expect(state.reveal).toBeNull()
+  })
+
+  it('finishes with the leaderboard', () => {
+    const state = run(
+      connecting,
+      joined,
+      server(question()),
+      server({ type: 'leaderboard', rankings: [{ rank: 1, name: 'Priya', score: 920 }] }),
+    )
+    expect(state.phase).toBe('finished')
+    expect(state.rankings).toEqual([{ rank: 1, name: 'Priya', score: 920 }])
+  })
+
+  it('stays on the leaderboard if the connection closes after the game', () => {
+    const state = run(
+      connecting,
+      joined,
+      server({ type: 'leaderboard', rankings: [] }),
+      { type: 'closed' },
+    )
+    expect(state.phase).toBe('finished')
+    expect(state.error).toBeNull()
+  })
+
+  it('goes back to an empty join form on reset', () => {
+    const state = run(
+      connecting,
+      joined,
+      server({ type: 'leaderboard', rankings: [] }),
+      { type: 'reset' },
+    )
+    expect(state).toEqual(initialState)
   })
 
   it('reports a lost connection if the socket closes during a question', () => {

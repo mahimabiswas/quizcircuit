@@ -277,6 +277,41 @@ describe('PlayerGame: questions', () => {
     expect(screen.getByRole('heading', { name: 'Second question' })).toBeInTheDocument()
   })
 
+  it('shows the final leaderboard when the game ends', async () => {
+    await joinLobby()
+    server.question(0)
+    server.reveal(0, 950)
+    act(() =>
+      fake.last.receive({
+        type: 'leaderboard',
+        rankings: [
+          { rank: 1, name: 'Priya', score: 950 },
+          { rank: 2, name: 'Tom', score: 0 },
+        ],
+      }),
+    )
+    expect(screen.getByRole('heading', { name: 'You finished 1st!' })).toBeInTheDocument()
+    expect(screen.getByText('950 points')).toBeInTheDocument()
+  })
+
+  it('Done closes the connection and goes back to an empty join form', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    act(() => fake.last.receive({ type: 'leaderboard', rankings: [{ rank: 1, name: 'Priya', score: 0 }] }))
+    await user.click(screen.getByRole('button', { name: 'Done' }))
+    expect(fake.last.closedByClient).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Join the game' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Your name')).toHaveValue('')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument() // no "lost connection" message
+  })
+
+  it('keeps the leaderboard on screen if the connection closes after the game', async () => {
+    await joinLobby()
+    act(() => fake.last.receive({ type: 'leaderboard', rankings: [{ rank: 1, name: 'Priya', score: 0 }] }))
+    server.close(1006)
+    expect(screen.getByRole('heading', { name: 'You finished 1st!' })).toBeInTheDocument()
+  })
+
   it('goes back to the form if the connection drops mid-question', async () => {
     await joinLobby()
     server.question(0)

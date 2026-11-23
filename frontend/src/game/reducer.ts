@@ -5,6 +5,7 @@ import type {
   AnswerCountMessage,
   ErrorCode,
   QuestionMessage,
+  Ranking,
   RevealMessage,
   ServerMessage,
 } from '../protocol'
@@ -15,6 +16,7 @@ export type Phase =
   | 'lobby' // joined, waiting for the host to start
   | 'question' // a question is open
   | 'reveal' // the question ended: showing the right answer and scores
+  | 'finished' // the game is over: showing the final leaderboard
   | 'disconnected' // the connection dropped after joining
 
 /** Server error codes, plus two the client detects itself. */
@@ -38,6 +40,8 @@ export interface GameState {
   answerCount: AnswerCountMessage | null
   /** The results of the question that just ended. */
   reveal: RevealMessage | null
+  /** The final leaderboard, once the game is over. */
+  rankings: Ranking[] | null
 }
 
 export type GameAction =
@@ -45,6 +49,7 @@ export type GameAction =
   | { type: 'server'; message: ServerMessage; receivedAt: number } // receivedAt: Date.now()
   | { type: 'answer_sent'; choice: number } // the player tapped an option
   | { type: 'closed' } // the socket closed
+  | { type: 'reset' } // the player left (Done): back to an empty join form
 
 export const initialState: GameState = {
   phase: 'idle',
@@ -57,6 +62,7 @@ export const initialState: GameState = {
   answered: false,
   answerCount: null,
   reveal: null,
+  rankings: null,
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
@@ -78,7 +84,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         // Closed before we got in: the server never answered, or we couldn't reach it.
         return { ...state, phase: 'idle', error: state.error ?? 'CONNECTION_FAILED' }
       }
-      return state // already back on the form (e.g. ROOM_NOT_FOUND, then the server closes)
+      // Otherwise: already back on the form (e.g. ROOM_NOT_FOUND, then the server
+      // closes), or the game is over and the leaderboard should stay on screen.
+      return state
+
+    case 'reset':
+      return initialState
   }
 }
 
@@ -107,6 +118,9 @@ function onMessage(state: GameState, message: ServerMessage, receivedAt: number)
     case 'reveal':
       // Keep the question and this player's choice: the reveal screen shows both.
       return { ...state, phase: 'reveal', reveal: message, error: null }
+
+    case 'leaderboard':
+      return { ...state, phase: 'finished', rankings: message.rankings, error: null }
 
     case 'answer_ack':
       return { ...state, answered: true }

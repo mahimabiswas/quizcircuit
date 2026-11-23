@@ -79,6 +79,18 @@ export interface RevealMessage {
   results: PlayerResult[] // one per player, including players who did not answer
 }
 
+export interface Ranking {
+  rank: number // ties share a rank: 1, 1, 3
+  name: string
+  score: number
+}
+
+/** Sent after the last reveal, when the host moves on. The game is over. */
+export interface LeaderboardMessage {
+  type: 'leaderboard'
+  rankings: Ranking[] // best first
+}
+
 export interface ErrorMessage {
   type: 'error'
   code: ErrorCode
@@ -92,4 +104,5 @@ export type ServerMessage =
   | AnswerAckMessage
   | AnswerCountMessage
   | RevealMessage
+  | LeaderboardMessage
   | ErrorMessage
