@@ -294,11 +294,11 @@ describe('PlayerGame: questions', () => {
     expect(screen.getByText('950 points')).toBeInTheDocument()
   })
 
-  it('Done closes the connection and goes back to an empty join form', async () => {
+  it('"Join another game" closes the connection and goes back to an empty join form', async () => {
     const user = userEvent.setup()
     await joinLobby()
     act(() => fake.last.receive({ type: 'leaderboard', rankings: [{ rank: 1, name: 'Priya', score: 0 }] }))
-    await user.click(screen.getByRole('button', { name: 'Done' }))
+    await user.click(screen.getByRole('button', { name: 'Join another game' }))
     expect(fake.last.closedByClient).toBe(true)
     expect(screen.getByRole('heading', { name: 'Join the game' })).toBeInTheDocument()
     expect(screen.getByLabelText('Your name')).toHaveValue('')

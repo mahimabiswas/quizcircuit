@@ -49,7 +49,7 @@ export type GameAction =
   | { type: 'server'; message: ServerMessage; receivedAt: number } // receivedAt: Date.now()
   | { type: 'answer_sent'; choice: number } // the player tapped an option
   | { type: 'closed' } // the socket closed
-  | { type: 'reset' } // the player left (Done): back to an empty join form
+  | { type: 'reset' } // the player left ("Join another game"): back to an empty join form
 
 export const initialState: GameState = {
   phase: 'idle',

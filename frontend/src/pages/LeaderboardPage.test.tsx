@@ -12,9 +12,9 @@ const RANKINGS: Ranking[] = [
 ]
 
 function renderBoard(name: string) {
-  const onDone = vi.fn()
-  render(<LeaderboardPage name={name} rankings={RANKINGS} onDone={onDone} />)
-  return { onDone }
+  const onLeave = vi.fn()
+  render(<LeaderboardPage name={name} rankings={RANKINGS} onLeave={onLeave} />)
+  return { onLeave }
 }
 
 describe('LeaderboardPage', () => {
@@ -41,10 +41,10 @@ describe('LeaderboardPage', () => {
     expect(rows[3]).toHaveAttribute('aria-current', 'true')
   })
 
-  it('calls onDone when Done is pressed', async () => {
+  it('leaves when "Join another game" is pressed', async () => {
     const user = userEvent.setup()
-    const { onDone } = renderBoard('Priya')
-    await user.click(screen.getByRole('button', { name: 'Done' }))
-    expect(onDone).toHaveBeenCalledOnce()
+    const { onLeave } = renderBoard('Priya')
+    await user.click(screen.getByRole('button', { name: 'Join another game' }))
+    expect(onLeave).toHaveBeenCalledOnce()
   })
 })

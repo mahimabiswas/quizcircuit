@@ -68,7 +68,7 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
     send(connection.socket, { type: 'answer', question_id: questionId, choice })
   }, [])
 
-  /** Leave the game (the Done button): close the connection and start over. */
+  /** Leave the game ("Join another game"): close the connection and start over. */
   const leave = useCallback(() => {
     const connection = current.current
     current.current = null // first, so this socket's close event is ignored

@@ -36,7 +36,7 @@ export function PlayerGame({ createSocket }: PlayerGameProps) {
   }
 
   if (state.phase === 'finished' && state.rankings && state.name !== null) {
-    return <LeaderboardPage name={state.name} rankings={state.rankings} onDone={leave} />
+    return <LeaderboardPage name={state.name} rankings={state.rankings} onLeave={leave} />
   }
 
   if (state.phase === 'reveal' && state.reveal && state.question && state.name !== null) {

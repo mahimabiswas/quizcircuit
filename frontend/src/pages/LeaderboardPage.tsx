@@ -5,10 +5,11 @@ import type { Ranking } from '../protocol'
 interface LeaderboardPageProps {
   name: string // this player
   rankings: Ranking[] // best first; ties share a rank
-  onDone: () => void
+  /** Leave this game and go back to the join form. */
+  onLeave: () => void
 }
 
-export function LeaderboardPage({ name, rankings, onDone }: LeaderboardPageProps) {
+export function LeaderboardPage({ name, rankings, onLeave }: LeaderboardPageProps) {
   const mine = rankings.find((r) => r.name === name)
   const tied = mine !== undefined && rankings.filter((r) => r.rank === mine.rank).length > 1
 
@@ -56,15 +57,15 @@ export function LeaderboardPage({ name, rankings, onDone }: LeaderboardPageProps
             })}
           </ol>
 
-          {/* mt-auto keeps Done at the bottom of a phone screen; pt-6 keeps a gap
+          {/* mt-auto keeps the button at the bottom of a phone screen; pt-6 keeps a gap
               above it when the list is long. */}
           <div className="mt-auto pt-6 sm:mt-0 sm:pt-8">
             <button
               type="button"
-              onClick={onDone}
+              onClick={onLeave}
               className="w-full rounded-lg bg-accent py-3 font-semibold hover:bg-accent-hover"
             >
-              Done
+              Join another game
             </button>
           </div>
         </div>
