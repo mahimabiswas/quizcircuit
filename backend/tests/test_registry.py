@@ -1,4 +1,3 @@
-import asyncio
 import re
 from collections.abc import Iterator
 
@@ -70,18 +69,14 @@ def test_remove() -> None:
     assert len(registry) == 0
 
 
-def test_reveal_pause_passed_to_rooms() -> None:
-    assert RoomRegistry(reveal_pause=0).create(QUESTIONS, 20).reveal_pause == 0
-
-
 async def test_finished_room_removes_itself_when_empty() -> None:
-    registry = RoomRegistry(make_code=lambda: "QC-0042", reveal_pause=0)
+    registry = RoomRegistry(make_code=lambda: "QC-0042")
     live = registry.create(QUESTIONS, 20)
     player = await live.join(FakeConnection(), "Omar", None)
     host = await live.join(FakeConnection(), "Host", live.room.host_token)
     await live.start(host)
-    await live.answer(player, 0, 0)  # everyone answered: reveal, then (pause 0) leaderboard
-    await asyncio.sleep(0.05)
+    await live.answer(player, 0, 0)  # everyone answered: reveal
+    await live.next_question(host)  # last question: leaderboard
     assert live.room.state == State.FINISHED
     await live.leave(player)
     assert len(registry) == 1

@@ -13,6 +13,7 @@ from app.models import (
     KickMessage,
     LeaderboardMessage,
     LobbyMessage,
+    NextMessage,
     QuestionMessage,
     RevealMessage,
     StartMessage,
@@ -56,6 +57,10 @@ def test_parse_answer() -> None:
 def test_parse_kick() -> None:
     msg = parse_client_message('{"type": "kick", "name": "Omar"}')
     assert msg == KickMessage(type="kick", name="Omar")
+
+
+def test_parse_next() -> None:
+    assert parse_client_message('{"type": "next"}') == NextMessage(type="next")
 
 
 def test_parse_accepts_bytes() -> None:

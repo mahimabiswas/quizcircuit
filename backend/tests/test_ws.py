@@ -24,7 +24,7 @@ QUESTION = {"text": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    with TestClient(create_app(reveal_pause=0)) as client:
+    with TestClient(create_app()) as client:
         yield client
 
 
@@ -86,8 +86,8 @@ def test_full_game(client: TestClient) -> None:
             assert expect(ws, "lobby")[0]["players"] == ["Mahima", "Omar"]
 
         for question_id in (0, 1):
-            if question_id == 0:
-                host.send_json({"type": "start"})
+            # The host starts the game, then moves on from each reveal with Next.
+            host.send_json({"type": "start"} if question_id == 0 else {"type": "next"})
             for ws in (host, a, b):
                 question = expect(ws, "question")[0]
                 assert question["id"] == question_id
@@ -121,6 +121,7 @@ def test_full_game(client: TestClient) -> None:
                     "total": 0,
                 }
 
+        host.send_json({"type": "next"})  # after the last reveal: leaderboard
         for ws in (host, a, b):
             rankings = expect(ws, "leaderboard")[0]["rankings"]
             assert [(r["rank"], r["name"]) for r in rankings] == [(1, "Mahima"), (2, "Omar")]
@@ -135,6 +136,8 @@ def test_finished_room_is_removed_after_everyone_leaves(client: TestClient) -> N
         join(a, "A")
         host.send_json({"type": "start"})
         a.send_json({"type": "answer", "question_id": 0, "choice": 1})
+        expect(host, "lobby", "lobby", "question", "answer_count", "reveal")
+        host.send_json({"type": "next"})
         expect(a, "lobby", "question", "answer_ack", "answer_count", "reveal", "leaderboard")
     deadline = time.monotonic() + 2
     while client.get(f"/rooms/{room['code']}").status_code != 404:
@@ -235,6 +238,8 @@ def test_player_cannot_use_host_actions(client: TestClient) -> None:
         expect_error(a, "NOT_HOST")
         a.send_json({"type": "kick", "name": "B"})
         expect_error(a, "NOT_HOST")
+        a.send_json({"type": "next"})
+        expect_error(a, "NOT_HOST")
 
 
 def test_host_errors(client: TestClient) -> None:
@@ -249,6 +254,8 @@ def test_host_errors(client: TestClient) -> None:
         host.send_json({"type": "start"})
         expect(host, "lobby", "question")
         host.send_json({"type": "start"})
+        expect_error(host, "WRONG_STATE")
+        host.send_json({"type": "next"})  # question still open
         expect_error(host, "WRONG_STATE")
         host.send_json({"type": "answer", "question_id": 0, "choice": 1})
         expect_error(host, "WRONG_STATE")

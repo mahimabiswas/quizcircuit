@@ -3,7 +3,6 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, Field, StrictInt
 
-from app.live import REVEAL_PAUSE
 from app.registry import RoomRegistry
 from app.rooms import Question, RoomError, State
 from app.ws import router as ws_router
@@ -31,9 +30,9 @@ class RoomInfo(BaseModel):
     player_count: int
 
 
-def create_app(reveal_pause: float = REVEAL_PAUSE) -> FastAPI:
+def create_app() -> FastAPI:
     app = FastAPI(title="QuizCircuit")
-    app.state.registry = RoomRegistry(reveal_pause=reveal_pause)
+    app.state.registry = RoomRegistry()
     app.include_router(ws_router)
 
     @app.get("/health")

@@ -3,11 +3,12 @@
 Concurrency model: one asyncio event loop. Room's methods never await, and
 every LiveRoom operation that changes state holds the room's lock across the
 change *and* the broadcasts that follow, so every client sees messages in the
-same order. Timer and reveal-pause tasks sleep outside the lock, then take it
-and re-check that the game is still where they left it before acting.
+same order. The question timer sleeps outside the lock, then takes it and
+re-checks that the same question is still open before ending it.
 
 Deadlines are enforced by Room's server clock, not by the timer: the timer
-only decides when `reveal` is sent.
+only decides when `reveal` is sent. After a reveal the game waits for the
+host to send `next`.
 """
 
 import asyncio
@@ -32,7 +33,6 @@ from app.rooms import ErrorCode, QuestionView, Room, RoomError, State, name_key
 
 log = logging.getLogger(__name__)
 
-REVEAL_PAUSE = 5.0
 CLOSE_KICKED = 4000
 CLOSE_REPLACED = 4001
 
@@ -58,16 +58,14 @@ class LiveRoom:
     def __init__(
         self,
         room: Room,
-        reveal_pause: float = REVEAL_PAUSE,
         on_empty: Callable[[], None] | None = None,
     ) -> None:
         self.room = room
-        self.reveal_pause = reveal_pause
         self._on_empty = on_empty
         self._lock = asyncio.Lock()
         self._host: Member | None = None
         self._players: dict[str, Member] = {}  # name_key -> Member
-        self._task: asyncio.Task[None] | None = None  # question timer or reveal pause
+        self._task: asyncio.Task[None] | None = None  # the open question's timer
         self._last_reveal: RevealMessage | None = None
 
     # --- public operations (each takes the lock) ----------------------------
@@ -93,6 +91,21 @@ class LiveRoom:
             if self.room.all_answered():
                 await self._end_question()
 
+    async def next_question(self, member: Member) -> None:
+        """Host moves on from a reveal: the next question, or the leaderboard after the last.
+
+        Only valid in REVEAL, so a double-tap reaches a QUESTION and gets WRONG_STATE
+        instead of skipping a question.
+        """
+        async with self._lock:
+            self._require_host(member)
+            result = self.room.advance()
+            if isinstance(result, QuestionView):
+                await self._open_question(result)
+            else:
+                await self._broadcast(LeaderboardMessage(rankings=result))
+                self._check_empty()
+
     async def kick(self, member: Member, name: str) -> None:
         async with self._lock:
             self._require_host(member)
@@ -117,7 +130,7 @@ class LiveRoom:
             self._check_empty()
 
     def cancel_tasks(self) -> None:
-        """Cancel the pending timer or reveal pause. A task never cancels itself
+        """Cancel the pending question timer. A task never cancels itself
         (the timer calls this on its way to sending the reveal)."""
         if self._task is not None and self._task is not asyncio.current_task():
             self._task.cancel()
@@ -172,7 +185,7 @@ class LiveRoom:
         self.cancel_tasks()
         self._last_reveal = RevealMessage.model_validate(self.room.end_question())
         await self._broadcast(self._last_reveal)
-        self._schedule(self._advance_after_pause(self.room.question_index))
+        # The game now waits on the reveal until the host sends `next`.
 
     async def _after_player_left(self) -> None:
         if self.room.state == State.LOBBY:
@@ -195,18 +208,6 @@ class LiveRoom:
         async with self._lock:
             if self.room.state == State.QUESTION and self.room.question_index == index:
                 await self._end_question()
-
-    async def _advance_after_pause(self, index: int) -> None:
-        await asyncio.sleep(self.reveal_pause)
-        async with self._lock:
-            if self.room.state != State.REVEAL or self.room.question_index != index:
-                return
-            result = self.room.advance()
-            if isinstance(result, QuestionView):
-                await self._open_question(result)
-            else:
-                await self._broadcast(LeaderboardMessage(rankings=result))
-                self._check_empty()
 
     def _schedule(self, coro: Coroutine[Any, Any, None]) -> None:
         """Replace the pending task with a new one."""

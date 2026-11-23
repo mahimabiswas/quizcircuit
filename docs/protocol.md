@@ -53,6 +53,7 @@ Connect to `/ws/{code}`. The first message from the client must be `join`.
 | `start` | none | host | Only valid in LOBBY with at least one player (otherwise `WRONG_STATE`). |
 | `answer` | `question_id`, `choice` (0-based index) | player | Only valid in QUESTION, once per question. From the host: `WRONG_STATE`. |
 | `kick` | `name` | host | Only valid in LOBBY. Kicking a name that is not in the room does nothing. |
+| `next` | none | host | Only valid in REVEAL (otherwise `WRONG_STATE`). Sends the next `question`, or the `leaderboard` after the last question. A second tap arrives after the next question has opened and gets `WRONG_STATE`, so it never skips a question. |
 
 Unknown extra fields in client messages are ignored.
 
@@ -67,7 +68,7 @@ The host can join again with the same `host_token` at any time, including mid-ga
 | REVEAL | the last `reveal` |
 | FINISHED | `leaderboard` |
 
-If the host disconnects, the game carries on: questions still end on their timers.
+If the host disconnects, an open question still ends on its timer, but the game then waits on the `reveal` until the host rejoins and sends `next`.
 
 ### Server -> Client
 
@@ -119,7 +120,7 @@ States: `LOBBY -> QUESTION -> REVEAL -> QUESTION ... -> FINISHED`
 2. Host sends `start`. Joins are now rejected (GAME_STARTED).
 3. Server sends `question` and starts the timer.
 4. QUESTION ends when the time limit passes or every connected player has answered, whichever is first.
-5. Server sends `reveal`, waits 5 seconds, then sends the next `question` (or `leaderboard` if that was the last).
+5. Server sends `reveal`. The game stays on the reveal until the host sends `next`, then the server sends the next `question` (or `leaderboard` if that was the last).
 
 ## Scoring
 
@@ -156,4 +157,4 @@ Example with time_limit = 20: correct at 4s gives 900; correct at 20s gives 500;
 
 - Reconnect: player token so a refresh restores the session.
 - Per-question time limits instead of one global value.
-- Cleaning up rooms abandoned in the lobby or mid-game.
+- Cleaning up rooms abandoned in the lobby or mid-game (a game everyone has left waits on its reveal forever).

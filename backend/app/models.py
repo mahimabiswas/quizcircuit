@@ -40,8 +40,12 @@ class KickMessage(_ClientMessage):
     name: str
 
 
+class NextMessage(_ClientMessage):
+    type: Literal["next"]
+
+
 ClientMessage = Annotated[
-    JoinMessage | StartMessage | AnswerMessage | KickMessage,
+    JoinMessage | StartMessage | AnswerMessage | KickMessage | NextMessage,
     Field(discriminator="type"),
 ]
 

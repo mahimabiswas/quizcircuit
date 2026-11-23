@@ -20,13 +20,12 @@ async def make_live() -> AsyncIterator[LiveFactory]:
 
     def factory(
         time_limit: float = LONG,
-        reveal_pause: float = LONG,
         questions: list[Question] = QUESTIONS,
         clock: Callable[[], float] = time.time,
         on_empty: Callable[[], None] | None = None,
     ) -> LiveRoom:
         room = Room("QC-1", questions, time_limit, clock=clock)
-        live = LiveRoom(room, reveal_pause, on_empty=on_empty)
+        live = LiveRoom(room, on_empty=on_empty)
         created.append(live)
         return live
 
@@ -183,16 +182,18 @@ async def test_late_answer_before_timer_fires_is_time_up(make_live: LiveFactory)
 
 
 async def test_full_game_when_everyone_answers(make_live: LiveFactory) -> None:
-    live = make_live(reveal_pause=0)
+    live = make_live()
     host, host_conn = await join_host(live)
     a, a_conn = await join_player(live, "A")
     await live.start(host)
 
     await live.answer(a, 0, 1)
     assert a_conn.last("reveal")["question_id"] == 0  # sent before answer() returns
-    await eventually(lambda: live.room.state == State.QUESTION)
+    await live.next_question(host)
+    assert live.room.state == State.QUESTION
     await live.answer(a, 1, 0)
-    await eventually(lambda: live.room.state == State.FINISHED)
+    await live.next_question(host)
+    assert live.room.state == State.FINISHED
 
     assert host_conn.types() == [
         "joined", "lobby", "lobby",
@@ -228,13 +229,39 @@ async def test_timer_ends_question_when_nobody_answers(make_live: LiveFactory) -
     ]
 
 
-async def test_reveal_pause_then_next_question(make_live: LiveFactory) -> None:
-    live = make_live(time_limit=0.05, reveal_pause=0.05)
+async def test_reveal_waits_for_the_host(make_live: LiveFactory) -> None:
+    live = make_live(time_limit=0.05)
     host, host_conn = await join_host(live)
     await join_player(live, "A")
     await live.start(host)
-    await eventually(lambda: host_conn.types().count("question") == 2)
-    assert host_conn.last("question")["id"] == 1
+    await eventually(lambda: "reveal" in host_conn.types())
+    await asyncio.sleep(0.15)  # nothing moves on by itself
+    assert live.room.state == State.REVEAL
+    assert host_conn.types().count("question") == 1
+
+
+async def test_next_opens_the_next_question_with_a_fresh_timer(make_live: LiveFactory) -> None:
+    live = make_live(time_limit=0.05)
+    host, host_conn = await join_host(live)
+    _, a_conn = await join_player(live, "A")
+    await live.start(host)
+    await eventually(lambda: "reveal" in host_conn.types())
+    await live.next_question(host)
+    assert a_conn.last("question")["id"] == 1
+    assert "correct" not in a_conn.last("question")
+    await eventually(lambda: host_conn.types().count("reveal") == 2)  # its timer ran
+
+
+async def test_next_after_last_question_sends_leaderboard(make_live: LiveFactory) -> None:
+    live = make_live(questions=QUESTIONS[:1])
+    host, host_conn = await join_host(live)
+    a, a_conn = await join_player(live, "A")
+    await live.start(host)
+    await live.answer(a, 0, 1)
+    await live.next_question(host)
+    assert live.room.state == State.FINISHED
+    for conn in (host_conn, a_conn):
+        assert conn.last("leaderboard")["rankings"][0] == {"rank": 1, "name": "A", "score": 1000}
 
 
 async def test_stale_timer_does_nothing(make_live: LiveFactory) -> None:
@@ -247,15 +274,58 @@ async def test_stale_timer_does_nothing(make_live: LiveFactory) -> None:
     assert host_conn.types().count("reveal") == 1
 
 
-async def test_stale_reveal_pause_does_nothing(make_live: LiveFactory) -> None:
+async def test_only_host_can_send_next(make_live: LiveFactory) -> None:
+    live = make_live()
+    host, _ = await join_host(live)
+    a, _ = await join_player(live, "A")
+    await live.start(host)
+    await live.answer(a, 0, 1)
+    await assert_error(ErrorCode.NOT_HOST, live.next_question(a))
+    assert live.room.state == State.REVEAL
+
+
+async def test_replaced_host_cannot_send_next(make_live: LiveFactory) -> None:
+    live = make_live()
+    old, _ = await join_host(live)
+    a, _ = await join_player(live, "A")
+    await live.start(old)
+    await live.answer(a, 0, 1)
+    await join_host(live)
+    await assert_error(ErrorCode.NOT_HOST, live.next_question(old))
+
+
+async def test_next_outside_reveal_is_wrong_state(make_live: LiveFactory) -> None:
+    live = make_live()
+    host, _ = await join_host(live)
+    await join_player(live, "A")
+    await assert_error(ErrorCode.WRONG_STATE, live.next_question(host))  # lobby
+    await live.start(host)
+    await assert_error(ErrorCode.WRONG_STATE, live.next_question(host))  # question open
+
+
+async def test_double_next_does_not_skip_a_question(make_live: LiveFactory) -> None:
     live = make_live()
     host, host_conn = await join_host(live)
-    await join_player(live, "A")
+    a, _ = await join_player(live, "A")
     await live.start(host)
-    live.reveal_pause = 0
-    await live._advance_after_pause(0)  # still in QUESTION: must not advance
-    assert live.room.state == State.QUESTION
-    assert host_conn.types().count("question") == 1
+    await live.answer(a, 0, 1)
+    await live.next_question(host)
+    await assert_error(ErrorCode.WRONG_STATE, live.next_question(host))
+    assert live.room.question_index == 1
+    assert host_conn.types().count("question") == 2
+
+
+async def test_concurrent_next_taps_advance_once(make_live: LiveFactory) -> None:
+    live = make_live()
+    host, host_conn = await join_host(live)
+    a, _ = await join_player(live, "A")
+    await live.start(host)
+    await live.answer(a, 0, 1)
+    results = await asyncio.gather(
+        live.next_question(host), live.next_question(host), return_exceptions=True
+    )
+    assert sum(isinstance(r, RoomError) for r in results) == 1
+    assert host_conn.types().count("question") == 2
 
 
 async def test_concurrent_answers_are_serialised(make_live: LiveFactory) -> None:
@@ -344,14 +414,21 @@ async def test_last_unanswered_player_leaving_ends_question(make_live: LiveFacto
     assert results[1]["correct"] is False
 
 
-async def test_game_continues_without_host(make_live: LiveFactory) -> None:
-    live = make_live(time_limit=0.03, reveal_pause=0)
+async def test_without_host_game_waits_on_reveal_until_host_returns(
+    make_live: LiveFactory,
+) -> None:
+    live = make_live(time_limit=0.03)
     host, _ = await join_host(live)
     _, a_conn = await join_player(live, "A")
     await live.start(host)
     await live.leave(host)
-    await eventually(lambda: live.room.state == State.FINISHED)
-    assert a_conn.types()[-1] == "leaderboard"
+    await eventually(lambda: "reveal" in a_conn.types())  # the timer still ends the question
+    await asyncio.sleep(0.1)
+    assert live.room.state == State.REVEAL
+    host, conn = await join_host(live)
+    assert conn.types() == ["joined", "reveal"]
+    await live.next_question(host)
+    assert a_conn.last("question")["id"] == 1
 
 
 async def test_host_rejoins_mid_question(make_live: LiveFactory) -> None:
@@ -380,12 +457,12 @@ async def test_host_rejoins_during_reveal(make_live: LiveFactory) -> None:
 
 
 async def test_host_rejoins_after_finish(make_live: LiveFactory) -> None:
-    live = make_live(questions=QUESTIONS[:1], reveal_pause=0)
+    live = make_live(questions=QUESTIONS[:1])
     host, _ = await join_host(live)
     a, _ = await join_player(live, "A")
     await live.start(host)
     await live.answer(a, 0, 1)
-    await eventually(lambda: live.room.state == State.FINISHED)
+    await live.next_question(host)
     _, conn = await join_host(live)
     assert conn.types() == ["joined", "leaderboard"]
 
@@ -406,33 +483,30 @@ async def test_broken_connection_does_not_stop_broadcast(make_live: LiveFactory)
 
 async def test_on_empty_after_finish_and_last_leave(make_live: LiveFactory) -> None:
     emptied: list[bool] = []
-    live = make_live(questions=QUESTIONS[:1], reveal_pause=0, on_empty=lambda: emptied.append(True))
+    live = make_live(questions=QUESTIONS[:1], on_empty=lambda: emptied.append(True))
     host, _ = await join_host(live)
     a, _ = await join_player(live, "A")
     await live.start(host)
     await live.answer(a, 0, 1)
-    await eventually(lambda: live.room.state == State.FINISHED)
+    await live.next_question(host)
     await live.leave(a)
     assert emptied == []
     await live.leave(host)
     assert emptied == [True]
 
 
-async def test_on_empty_when_game_finishes_with_nobody_left(make_live: LiveFactory) -> None:
+async def test_abandoned_game_is_not_cleaned_up_yet(make_live: LiveFactory) -> None:
+    # Known gap (protocol.md, open questions): with no host to press Next, a game
+    # everyone has left stays on its reveal and is never removed.
     emptied: list[bool] = []
-    live = make_live(
-        questions=QUESTIONS[:1],
-        time_limit=0.03,
-        reveal_pause=0,
-        on_empty=lambda: emptied.append(True),
-    )
+    live = make_live(time_limit=0.03, on_empty=lambda: emptied.append(True))
     host, _ = await join_host(live)
     a, _ = await join_player(live, "A")
     await live.start(host)
     await live.leave(a)
     await live.leave(host)
-    await eventually(lambda: emptied == [True])
-    assert live.room.state == State.FINISHED
+    await eventually(lambda: live.room.state == State.REVEAL)
+    assert emptied == []
 
 
 async def test_on_empty_not_called_before_finish(make_live: LiveFactory) -> None:

@@ -17,6 +17,7 @@ from app.models import (
     ErrorMessage,
     JoinMessage,
     KickMessage,
+    NextMessage,
     StartMessage,
     parse_client_message,
 )
@@ -92,6 +93,8 @@ async def _dispatch(live: LiveRoom, member: Member, message: ClientMessage) -> N
             await live.answer(member, question_id, choice)
         case KickMessage(name=name):
             await live.kick(member, name)
+        case NextMessage():
+            await live.next_question(member)
 
 
 async def _receive(websocket: WebSocket) -> str | bytes:
