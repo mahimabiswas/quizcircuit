@@ -16,8 +16,30 @@ export type ErrorCode =
 // --- client -> server ---------------------------------------------------------
 
 export type ClientMessage =
-  | { type: 'join'; name: string }
+  | { type: 'join'; name: string; host_token?: string } // with host_token: join as host
   | { type: 'answer'; question_id: number; choice: number } // choice: 0-based option index
+  // Host only:
+  | { type: 'start' } // in the lobby: start the game
+  | { type: 'kick'; name: string } // in the lobby: remove a player
+  | { type: 'next' } // after a reveal: next question, or the final leaderboard
+
+// --- REST -----------------------------------------------------------------------
+
+export interface QuestionInput {
+  text: string
+  options: string[]
+  correct: number // index of the right option
+}
+
+export interface CreateRoomRequest {
+  time_limit: number // seconds per question
+  questions: QuestionInput[]
+}
+
+export interface CreateRoomResponse {
+  code: string
+  host_token: string // secret: whoever has it can run the game
+}
 
 // --- server -> client ---------------------------------------------------------
 

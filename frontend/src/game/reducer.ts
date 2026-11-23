@@ -24,6 +24,7 @@ export type JoinErrorCode = ErrorCode | 'CONNECTION_FAILED' | 'CONNECTION_LOST'
 
 export interface GameState {
   phase: Phase
+  role: 'host' | 'player' | null // set by the server's `joined`
   name: string | null // as the server accepted it (trimmed)
   players: string[] // everyone in the lobby, in join order
   error: JoinErrorCode | null
@@ -53,6 +54,7 @@ export type GameAction =
 
 export const initialState: GameState = {
   phase: 'idle',
+  role: null,
   name: null,
   players: [],
   error: null,
@@ -96,7 +98,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 function onMessage(state: GameState, message: ServerMessage, receivedAt: number): GameState {
   switch (message.type) {
     case 'joined':
-      return { ...state, phase: 'lobby', name: message.name, error: null }
+      // A host rejoining mid-game is sent the current question/reveal right after this.
+      return { ...state, phase: 'lobby', role: message.role, name: message.name, error: null }
 
     case 'lobby':
       return { ...state, players: message.players }

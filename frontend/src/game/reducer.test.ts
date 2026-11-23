@@ -42,7 +42,24 @@ describe('gameReducer: joining', () => {
   it('moves to lobby when the server accepts the join', () => {
     const state = run(connecting, joined)
     expect(state.phase).toBe('lobby')
+    expect(state.role).toBe('player')
     expect(state.name).toBe('Priya')
+  })
+
+  it('remembers a host join', () => {
+    const state = run(connecting, server({ type: 'joined', role: 'host', name: 'Host' }))
+    expect(state.role).toBe('host')
+  })
+
+  it('follows a host who rejoins mid-game straight into the current question', () => {
+    const state = run(
+      connecting,
+      server({ type: 'joined', role: 'host', name: 'Host' }),
+      server(question()),
+      server({ type: 'answer_count', question_id: 0, answered: 2, total: 5 }),
+    )
+    expect(state.phase).toBe('question')
+    expect(state.answerCount?.answered).toBe(2)
   })
 
   it('keeps the player list from lobby messages', () => {

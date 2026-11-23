@@ -1,6 +1,7 @@
 // Owns the WebSocket and feeds what happens on it into gameReducer.
 
 import { useCallback, useEffect, useReducer, useRef } from 'react'
+import type { ClientMessage } from '../protocol'
 import { gameReducer, initialState } from './reducer'
 import {
   browserSocket,
@@ -11,6 +12,8 @@ import {
   type SocketFactory,
   type SocketLike,
 } from './socket'
+
+type HostCommand = Extract<ClientMessage, { type: 'start' | 'kick' | 'next' }>
 
 interface Connection {
   socket: SocketLike
@@ -31,14 +34,18 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
     }
   }, [])
 
+  /** Join as a player, or as the host when `hostToken` is given. */
   const join = useCallback(
-    (code: string, name: string) => {
+    (code: string, name: string, hostToken?: string) => {
       dispatch({ type: 'connecting' })
+      const message = hostToken
+        ? ({ type: 'join', name, host_token: hostToken } as const)
+        : ({ type: 'join', name } as const)
 
       // After a rejected name the server keeps the socket open: just try again on it.
       const existing = current.current
       if (existing && existing.code === code && existing.socket.readyState === OPEN) {
-        send(existing.socket, { type: 'join', name })
+        send(existing.socket, message)
         return
       }
 
@@ -47,7 +54,7 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
       existing?.socket.close(1000)
 
       const { socket } = connection
-      socket.onopen = () => send(socket, { type: 'join', name })
+      socket.onopen = () => send(socket, message)
       socket.onmessage = (event) => {
         const message = parseMessage(event.data)
         if (message) dispatch({ type: 'server', message, receivedAt: Date.now() })
@@ -76,5 +83,14 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
     dispatch({ type: 'reset' })
   }, [])
 
-  return { state, join, answer, leave }
+  /** Host commands. The server checks they come from the host and rejects them otherwise. */
+  const sendCommand = useCallback((message: HostCommand) => {
+    const connection = current.current
+    if (connection) send(connection.socket, message)
+  }, [])
+  const start = useCallback(() => sendCommand({ type: 'start' }), [sendCommand])
+  const kick = useCallback((name: string) => sendCommand({ type: 'kick', name }), [sendCommand])
+  const next = useCallback(() => sendCommand({ type: 'next' }), [sendCommand])
+
+  return { state, join, answer, leave, start, kick, next }
 }
