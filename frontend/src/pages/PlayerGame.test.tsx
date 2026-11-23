@@ -34,9 +34,41 @@ const server = {
   joined: (name: string) =>
     act(() => fake.last.receive({ type: 'joined', role: 'player', name })),
   lobby: (players: string[]) => act(() => fake.last.receive({ type: 'lobby', players })),
-  error: (code: 'NAME_TAKEN' | 'ROOM_NOT_FOUND' | 'GAME_STARTED') =>
+  error: (code: 'NAME_TAKEN' | 'ROOM_NOT_FOUND' | 'GAME_STARTED' | 'TIME_UP') =>
     act(() => fake.last.receive({ type: 'error', code, message: 'server text' })),
   close: (code = 1000) => act(() => fake.last.serverClose(code)),
+  /** A question that started just now, with 20 seconds to answer. */
+  question: (id: number, text = `Question text ${id}`) => {
+    const now = Date.now() / 1000
+    return act(() =>
+      fake.last.receive({
+        type: 'question',
+        id,
+        index: id,
+        total: 3,
+        text,
+        options: ['Red', 'Green', 'Blue', 'Yellow'],
+        time_limit: 20,
+        ends_at: now + 20,
+        server_time: now,
+      }),
+    )
+  },
+  ack: (questionId: number) =>
+    act(() => fake.last.receive({ type: 'answer_ack', question_id: questionId })),
+  count: (questionId: number, answered: number, total: number) =>
+    act(() =>
+      fake.last.receive({ type: 'answer_count', question_id: questionId, answered, total }),
+    ),
+}
+
+/** Join as Priya and land in the lobby. */
+async function joinLobby() {
+  renderGame()
+  await fillAndJoin('QC-4821', 'Priya')
+  server.open()
+  server.joined('Priya')
+  server.lobby(['Priya', 'Tom'])
 }
 
 describe('PlayerGame', () => {
@@ -136,5 +168,75 @@ describe('PlayerGame', () => {
     server.close(1006)
     expect(screen.getByRole('alert')).toHaveTextContent('Lost the connection')
     expect(screen.getByLabelText('Game code')).toBeInTheDocument()
+  })
+})
+
+describe('PlayerGame: questions', () => {
+  it('shows the question when the host starts the game', async () => {
+    await joinLobby()
+    server.question(0, 'Which colour is grass?')
+    expect(screen.getByRole('heading', { name: 'Which colour is grass?' })).toBeInTheDocument()
+    expect(screen.getByText('Question 1 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('timer')).toHaveAccessibleName('20 seconds left')
+  })
+
+  it('sends the tapped answer with the question id', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    expect(fake.last.sent).toContainEqual({ type: 'answer', question_id: 0, choice: 1 })
+    expect(screen.getByText('Sending your answer…')).toBeInTheDocument()
+  })
+
+  it('sends only one answer even if tapped again', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    await user.click(screen.getByRole('button', { name: /Blue/ }))
+    const answers = fake.last.sent.filter((m) => (m as { type: string }).type === 'answer')
+    expect(answers).toHaveLength(1)
+  })
+
+  it('locks the answer in when the server confirms it, and shows progress', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    server.ack(0)
+    server.count(0, 1, 2)
+    expect(screen.getByText('Answer locked in')).toBeInTheDocument()
+    expect(screen.getByText('1 of 2 players answered')).toBeInTheDocument()
+    server.count(0, 2, 2)
+    expect(screen.getByText('2 of 2 players answered')).toBeInTheDocument()
+  })
+
+  it('explains a late answer', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    server.error('TIME_UP')
+    expect(screen.getByRole('alert')).toHaveTextContent('after time ran out')
+  })
+
+  it('starts fresh on the next question', async () => {
+    const user = userEvent.setup()
+    await joinLobby()
+    server.question(0)
+    await user.click(screen.getByRole('button', { name: /Green/ }))
+    server.ack(0)
+    server.question(1, 'Next one')
+    expect(screen.getByRole('heading', { name: 'Next one' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Green/ })).toBeEnabled()
+    expect(screen.queryByText('Answer locked in')).not.toBeInTheDocument()
+  })
+
+  it('goes back to the form if the connection drops mid-question', async () => {
+    await joinLobby()
+    server.question(0)
+    server.close(1006)
+    expect(screen.getByRole('alert')).toHaveTextContent('Lost the connection')
   })
 })

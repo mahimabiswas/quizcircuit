@@ -1,12 +1,13 @@
 // The player's game state. A pure function of what has happened so far:
 // no sockets, no React. useGame.ts feeds it events.
 
-import type { ErrorCode, ServerMessage } from '../protocol'
+import type { AnswerCountMessage, ErrorCode, QuestionMessage, ServerMessage } from '../protocol'
 
 export type Phase =
   | 'idle' // showing the join form
   | 'connecting' // Join pressed, waiting for the server to accept
   | 'lobby' // joined, waiting for the host to start
+  | 'question' // a question is open
   | 'disconnected' // the connection dropped after joining
 
 /** Server error codes, plus two the client detects itself. */
@@ -17,11 +18,23 @@ export interface GameState {
   name: string | null // as the server accepted it (trimmed)
   players: string[] // everyone in the lobby, in join order
   error: JoinErrorCode | null
+
+  // --- the current question ---
+  question: QuestionMessage | null
+  /** Server clock minus this device's clock, in seconds. Keeps the countdown honest
+   *  even if the phone's clock is wrong. */
+  clockOffset: number
+  /** The option this player tapped (0-based), as soon as they tap it. */
+  myChoice: number | null
+  /** True once the server confirms it has the answer. */
+  answered: boolean
+  answerCount: AnswerCountMessage | null
 }
 
 export type GameAction =
   | { type: 'connecting' } // the player pressed Join
-  | { type: 'server'; message: ServerMessage } // a message arrived
+  | { type: 'server'; message: ServerMessage; receivedAt: number } // receivedAt: Date.now()
+  | { type: 'answer_sent'; choice: number } // the player tapped an option
   | { type: 'closed' } // the socket closed
 
 export const initialState: GameState = {
@@ -29,6 +42,11 @@ export const initialState: GameState = {
   name: null,
   players: [],
   error: null,
+  question: null,
+  clockOffset: 0,
+  myChoice: null,
+  answered: false,
+  answerCount: null,
 }
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
@@ -37,10 +55,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, phase: 'connecting', error: null }
 
     case 'server':
-      return onMessage(state, action.message)
+      return onMessage(state, action.message, action.receivedAt)
+
+    case 'answer_sent':
+      return { ...state, myChoice: action.choice, error: null }
 
     case 'closed':
-      if (state.phase === 'lobby') return { ...state, phase: 'disconnected', error: 'CONNECTION_LOST' }
+      if (state.phase === 'lobby' || state.phase === 'question') {
+        return { ...state, phase: 'disconnected', error: 'CONNECTION_LOST' }
+      }
       if (state.phase === 'connecting') {
         // Closed before we got in: the server never answered, or we couldn't reach it.
         return { ...state, phase: 'idle', error: state.error ?? 'CONNECTION_FAILED' }
@@ -49,17 +72,46 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
-function onMessage(state: GameState, message: ServerMessage): GameState {
+function onMessage(state: GameState, message: ServerMessage, receivedAt: number): GameState {
   switch (message.type) {
     case 'joined':
       return { ...state, phase: 'lobby', name: message.name, error: null }
+
     case 'lobby':
       return { ...state, players: message.players }
+
+    case 'question':
+      // A fresh question: forget everything about the previous one.
+      return {
+        ...state,
+        phase: 'question',
+        question: message,
+        clockOffset: message.server_time - receivedAt / 1000,
+        myChoice: null,
+        answered: false,
+        answerCount: null,
+        error: null,
+      }
+
+    case 'answer_ack':
+      return { ...state, answered: true }
+
+    case 'answer_count':
+      return { ...state, answerCount: message }
+
     case 'error':
-      // While joining, an error sends the player back to the form to fix it.
-      // The server keeps the socket open, so they can try again on it.
-      return state.phase === 'connecting'
-        ? { ...state, phase: 'idle', error: message.code }
-        : { ...state, error: message.code }
+      if (state.phase === 'connecting') {
+        // While joining, an error sends the player back to the form to fix it.
+        // The server keeps the socket open, so they can try again on it.
+        return { ...state, phase: 'idle', error: message.code }
+      }
+      if (message.code === 'ALREADY_ANSWERED') {
+        return { ...state, answered: true } // the server has our first answer: fine
+      }
+      return { ...state, error: message.code }
+
+    default:
+      // A message type this screen doesn't use yet (e.g. reveal): keep the state as it is.
+      return state
   }
 }

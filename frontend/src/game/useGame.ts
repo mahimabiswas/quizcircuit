@@ -50,7 +50,7 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
       socket.onopen = () => send(socket, { type: 'join', name })
       socket.onmessage = (event) => {
         const message = parseMessage(event.data)
-        if (message) dispatch({ type: 'server', message })
+        if (message) dispatch({ type: 'server', message, receivedAt: Date.now() })
       }
       socket.onclose = () => {
         if (current.current !== connection) return // an old socket we replaced
@@ -61,5 +61,12 @@ export function useGame(createSocket: SocketFactory = browserSocket) {
     [createSocket],
   )
 
-  return { state, join }
+  const answer = useCallback((questionId: number, choice: number) => {
+    const connection = current.current
+    if (!connection) return
+    dispatch({ type: 'answer_sent', choice }) // show the choice straight away
+    send(connection.socket, { type: 'answer', question_id: questionId, choice })
+  }, [])
+
+  return { state, join, answer }
 }
