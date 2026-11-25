@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { HostGame } from './pages/HostGame'
-import { HostStartPage } from './pages/HostStartPage'
 import { PlayerGame } from './pages/PlayerGame'
+import { ReviewQuizPage } from './pages/ReviewQuizPage'
 
 export default function App() {
   return (
@@ -13,7 +13,8 @@ export default function App() {
         <Route path="/join/:code" element={<PlayerGame />} />
 
         {/* Host */}
-        <Route path="/host" element={<HostStartPage />} />
+        {/* Review and edit the quiz, then create the game. */}
+        <Route path="/host" element={<ReviewQuizPage />} />
         <Route path="/host/:code" element={<HostGame />} />
       </Routes>
     </BrowserRouter>
