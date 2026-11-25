@@ -49,7 +49,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 ## Frontend
  
 - Commands (run from frontend/): `npm run dev`, `npm test`, `npm run build`, `npm run lint`.
-- Host flow: `/host` (HostCreateFlow: Create a quiz -> Generating -> Review your quiz) -> `/host/:code` (HostGame). Players: `/` and `/join/:code` (PlayerGame).
+- Routes: `/` is the landing page (LandingPage). Host flow: `/host` (HostCreateFlow: Create a quiz -> Generating -> Review your quiz) -> `/host/:code` (HostGame). Players: `/join` and `/join/:code` (PlayerGame).
 - Colours and fonts come from the `@theme` tokens in `src/index.css`. Never use raw hex values in components.
 - Every screen must work on both a phone and a laptop. Build phone-first, then adapt from the `sm` breakpoint (640px) up.
 - Build one screen per step, with tests, and stop for review before the next.
