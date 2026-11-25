@@ -8,7 +8,9 @@ import { getHostToken } from '../game/hostToken'
 import type { GameState } from '../game/reducer'
 import type { SocketFactory } from '../game/socket'
 import { useGame } from '../game/useGame'
+import { useSecondsLeft } from '../game/useSecondsLeft'
 import { HostLeaderboardPage } from './HostLeaderboardPage'
+import { HostQuestionPage } from './HostQuestionPage'
 import { InvitePage } from './InvitePage'
 
 const HOST_NAME = 'Host'
@@ -22,6 +24,8 @@ export function HostGame({ createSocket }: HostGameProps) {
   const code = (useParams().code ?? '').toUpperCase()
   const token = getHostToken(code)
   const { state, join, start, kick, next } = useGame(createSocket)
+  // Hooks must run on every render, before any early return below.
+  const secondsLeft = useSecondsLeft(state.question, state.clockOffset)
 
   // Connect as host as soon as the page opens.
   useEffect(() => {
@@ -76,7 +80,20 @@ export function HostGame({ createSocket }: HostGameProps) {
     return <HostLeaderboardPage rankings={state.rankings} />
   }
 
-  if (state.phase === 'question' || state.phase === 'reveal') {
+  if (state.phase === 'question' && state.question) {
+    return (
+      <HostQuestionPage
+        code={code}
+        question={state.question}
+        secondsLeft={secondsLeft}
+        answered={state.answerCount?.answered ?? 0}
+        // Before the first answer the server hasn't sent a count yet: use the lobby size.
+        totalPlayers={state.answerCount?.total ?? state.players.length}
+      />
+    )
+  }
+
+  if (state.phase === 'reveal') {
     return <TemporaryHostView state={state} onNext={next} />
   }
 
@@ -103,41 +120,32 @@ function Notice({ title, children }: { title: string; children?: ReactNode }) {
 }
 
 /**
- * TEMPORARY: a bare-bones view of the game for the host, with a Next button.
- * The host question and reveal screens replace it.
+ * TEMPORARY: a bare-bones reveal for the host, with a Next button.
+ * The host reveal screen replaces it.
  */
 function TemporaryHostView({ state, onNext }: { state: GameState; onNext: () => void }) {
-  const { question, answerCount, reveal } = state
+  const { question, reveal } = state
   const isLast = question !== null && question.index + 1 === question.total
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
       <Logo />
-      {question && (
+      {question && reveal && (
         <section className="rounded-2xl border border-border bg-surface p-6">
           <p className="text-sm text-muted">
             Question {question.index + 1} of {question.total}
           </p>
           <h1 className="mt-2 text-xl font-bold">{question.text}</h1>
-          {state.phase === 'question' && (
-            <p className="mt-4 text-muted">
-              {answerCount ? `${answerCount.answered} of ${answerCount.total}` : '0'} answered
-            </p>
-          )}
-          {state.phase === 'reveal' && reveal && (
-            <>
-              <p className="mt-4">
-                Answer: <strong className="text-correct">{question.options[reveal.correct]}</strong>
-              </p>
-              <button
-                type="button"
-                onClick={onNext}
-                className="mt-6 rounded-lg bg-accent px-6 py-3 font-semibold hover:bg-accent-hover"
-              >
-                {isLast ? 'Show final results' : 'Next question'}
-              </button>
-            </>
-          )}
+          <p className="mt-4">
+            Answer: <strong className="text-correct">{question.options[reveal.correct]}</strong>
+          </p>
+          <button
+            type="button"
+            onClick={onNext}
+            className="mt-6 rounded-lg bg-accent px-6 py-3 font-semibold hover:bg-accent-hover"
+          >
+            {isLast ? 'Show final results' : 'Next question'}
+          </button>
         </section>
       )}
     </div>

@@ -7,7 +7,7 @@ const TICK_MS = 250 // a few times a second, so the number never lags visibly
  * Seconds left on a question at `nowMs` (this device's Date.now()).
  * Between 0 and the question's time limit.
  *
- * Uses the server's clock (this device's time + clockOffset), so a phone whose
+ * Uses the server's clock (this device's time + clockOffset), so a device whose
  * clock is wrong still counts down correctly. The upper cap matters because the
  * ticking `now` can be up to one tick old when a question arrives, which would
  * otherwise show 21 on a 20-second question for a moment.

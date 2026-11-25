@@ -32,7 +32,7 @@ export interface GameState {
   // --- the current question ---
   question: QuestionMessage | null
   /** Server clock minus this device's clock, in seconds. Keeps the countdown honest
-   *  even if the phone's clock is wrong. */
+   *  even if the device's clock is wrong. */
   clockOffset: number
   /** The option this player tapped (0-based), as soon as they tap it. */
   myChoice: number | null

@@ -84,6 +84,16 @@ describe('HostGame', () => {
     expect(screen.getByRole('heading', { name: 'What does a vector clock track?' })).toBeInTheDocument()
   })
 
+  it('counts answers as they come in, starting from the lobby size', () => {
+    openLobby(['Priya', 'Tom', 'Aisha'])
+    receive(QUESTION)
+    expect(screen.getByText('0 / 3')).toBeInTheDocument()
+    receive({ type: 'answer_count', question_id: 0, answered: 1, total: 3 })
+    expect(screen.getByText('1 / 3')).toBeInTheDocument()
+    receive({ type: 'answer_count', question_id: 0, answered: 1, total: 2 }) // someone left
+    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+  })
+
   it('lets the host press Next after a reveal', async () => {
     const user = userEvent.setup()
     openLobby(['Priya'])
