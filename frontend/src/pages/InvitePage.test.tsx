@@ -29,6 +29,23 @@ describe('InvitePage', () => {
     expect(screen.getByRole('button', { name: 'Copied!' })).toBeInTheDocument()
   })
 
+  it('when the browser blocks copying, selects the link and says how to copy it', async () => {
+    const user = userEvent.setup()
+    // As on http://192.168.x.x: no Clipboard API, and the fallback copy fails too.
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    Object.defineProperty(document, 'execCommand', { value: () => false, configurable: true })
+    try {
+      renderInvite()
+      await user.click(screen.getByRole('button', { name: 'Copy link' }))
+      expect(screen.getByRole('status')).toHaveTextContent('press Ctrl+C')
+      const input = screen.getByLabelText('Join link') as HTMLInputElement
+      expect(input).toHaveFocus()
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, URL.length])
+    } finally {
+      Reflect.deleteProperty(document, 'execCommand')
+    }
+  })
+
   it('waits for players, with Start disabled', () => {
     renderInvite([])
     expect(screen.getByText('Waiting for players to join…')).toBeInTheDocument()

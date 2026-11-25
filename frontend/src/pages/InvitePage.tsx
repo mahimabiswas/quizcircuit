@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { copyText } from '../clipboard'
 import { Logo } from '../components/Logo'
 
 interface InvitePageProps {
@@ -28,21 +29,25 @@ export function InvitePage({ code, joinUrl, players, onStart, onKick }: InvitePa
 }
 
 function InviteCard({ code, joinUrl }: { code: string; joinUrl: string }) {
-  const [copied, setCopied] = useState(false)
+  const linkInput = useRef<HTMLInputElement>(null)
+  // 'copied': it worked. 'manual': the browser blocked copying, so the link is selected
+  // for the host to copy with the keyboard.
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'manual'>('idle')
 
-  // Show "Copied!" for 2 seconds, then go back to "Copy link".
+  // Show the result for a few seconds, then go back to "Copy link".
   useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 2000)
+    if (copyState === 'idle') return
+    const timer = setTimeout(() => setCopyState('idle'), copyState === 'copied' ? 2000 : 5000)
     return () => clearTimeout(timer)
-  }, [copied])
+  }, [copyState])
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(joinUrl)
-      setCopied(true)
-    } catch {
-      // Clipboard blocked (e.g. not https on another device): the link is still visible to copy by hand.
+    if (await copyText(joinUrl)) {
+      setCopyState('copied')
+    } else {
+      linkInput.current?.focus()
+      linkInput.current?.select()
+      setCopyState('manual')
     }
   }
 
@@ -73,6 +78,7 @@ function InviteCard({ code, joinUrl }: { code: string; joinUrl: string }) {
 
       <div className="mt-8 flex gap-2">
         <input
+          ref={linkInput}
           readOnly
           value={joinUrl}
           aria-label="Join link"
@@ -84,9 +90,14 @@ function InviteCard({ code, joinUrl }: { code: string; joinUrl: string }) {
           onClick={copyLink}
           className="shrink-0 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:border-accent"
         >
-          {copied ? 'Copied!' : 'Copy link'}
+          {copyState === 'copied' ? 'Copied!' : 'Copy link'}
         </button>
       </div>
+      {copyState === 'manual' && (
+        <p role="status" className="mt-2 text-xs text-muted">
+          Your browser blocked copying. The link is selected: press Ctrl+C (⌘C on a Mac).
+        </p>
+      )}
     </section>
   )
 }
