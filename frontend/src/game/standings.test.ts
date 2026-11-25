@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PlayerResult } from '../protocol'
-import { formatPoints, ordinal, rankOf, winnerLine } from './standings'
+import { formatPoints, ordinal, rankOf, topScorers, winnerLine } from './standings'
 
 function result(name: string, total: number): PlayerResult {
   return { name, correct: false, points: 0, total }
@@ -21,6 +21,41 @@ describe('rankOf', () => {
 
   it('returns null for a player not in the results', () => {
     expect(rankOf(results, 'Ghost')).toBeNull()
+  })
+})
+
+describe('topScorers', () => {
+  function scored(name: string, points: number): PlayerResult {
+    return { name, correct: points > 0, points, total: 0 }
+  }
+
+  it('ranks this round by points, best first, top 3 only', () => {
+    const results = [scored('Tom', 800), scored('Priya', 950), scored('Aisha', 900), scored('Jack', 700)]
+    expect(topScorers(results)).toEqual([
+      { rank: 1, name: 'Priya', points: 950 },
+      { rank: 2, name: 'Aisha', points: 900 },
+      { rank: 3, name: 'Tom', points: 800 },
+    ])
+  })
+
+  it('leaves out players who scored nothing', () => {
+    expect(topScorers([scored('Tom', 0), scored('Priya', 950)])).toEqual([
+      { rank: 1, name: 'Priya', points: 950 },
+    ])
+  })
+
+  it('is empty when nobody scored', () => {
+    expect(topScorers([scored('Tom', 0)])).toEqual([])
+  })
+
+  it('shares a rank on ties and keeps everyone tied for the last place', () => {
+    const results = [scored('A', 900), scored('B', 800), scored('C', 700), scored('D', 700)]
+    expect(topScorers(results).map((r) => [r.rank, r.name])).toEqual([
+      [1, 'A'],
+      [2, 'B'],
+      [3, 'C'],
+      [3, 'D'],
+    ])
   })
 })
 

@@ -13,6 +13,27 @@ export function rankOf(results: PlayerResult[], name: string): number | null {
   return 1 + results.filter((r) => r.total > me.total).length
 }
 
+export interface RoundScore {
+  rank: number
+  name: string
+  points: number
+}
+
+/**
+ * The best scorers on one question ("Top 3 this round"), by points earned on it.
+ * Players who scored nothing are left out. Ties share a rank; players tied with
+ * the last place shown are included, so the list can be longer than `limit`.
+ */
+export function topScorers(results: PlayerResult[], limit = 3): RoundScore[] {
+  const scored = results.filter((r) => r.points > 0).sort((a, b) => b.points - a.points)
+  const ranked = scored.map((r) => ({
+    rank: 1 + scored.filter((other) => other.points > r.points).length,
+    name: r.name,
+    points: r.points,
+  }))
+  return ranked.filter((r) => r.rank <= limit)
+}
+
 /** 1 -> "1st", 2 -> "2nd", 11 -> "11th", 22 -> "22nd". */
 export function ordinal(n: number): string {
   const lastTwo = n % 100

@@ -5,12 +5,12 @@ import { useEffect, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { Logo } from '../components/Logo'
 import { getHostToken } from '../game/hostToken'
-import type { GameState } from '../game/reducer'
 import type { SocketFactory } from '../game/socket'
 import { useGame } from '../game/useGame'
 import { useSecondsLeft } from '../game/useSecondsLeft'
 import { HostLeaderboardPage } from './HostLeaderboardPage'
 import { HostQuestionPage } from './HostQuestionPage'
+import { HostRevealPage } from './HostRevealPage'
 import { InvitePage } from './InvitePage'
 
 const HOST_NAME = 'Host'
@@ -93,8 +93,10 @@ export function HostGame({ createSocket }: HostGameProps) {
     )
   }
 
-  if (state.phase === 'reveal') {
-    return <TemporaryHostView state={state} onNext={next} />
+  if (state.phase === 'reveal' && state.question && state.reveal) {
+    return (
+      <HostRevealPage code={code} question={state.question} reveal={state.reveal} onNext={next} />
+    )
   }
 
   return <Notice title="Connecting…" />
@@ -115,39 +117,6 @@ function Notice({ title, children }: { title: string; children?: ReactNode }) {
           </Link>
         </div>
       </main>
-    </div>
-  )
-}
-
-/**
- * TEMPORARY: a bare-bones reveal for the host, with a Next button.
- * The host reveal screen replaces it.
- */
-function TemporaryHostView({ state, onNext }: { state: GameState; onNext: () => void }) {
-  const { question, reveal } = state
-  const isLast = question !== null && question.index + 1 === question.total
-
-  return (
-    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col gap-4 px-4 py-8">
-      <Logo />
-      {question && reveal && (
-        <section className="rounded-2xl border border-border bg-surface p-6">
-          <p className="text-sm text-muted">
-            Question {question.index + 1} of {question.total}
-          </p>
-          <h1 className="mt-2 text-xl font-bold">{question.text}</h1>
-          <p className="mt-4">
-            Answer: <strong className="text-correct">{question.options[reveal.correct]}</strong>
-          </p>
-          <button
-            type="button"
-            onClick={onNext}
-            className="mt-6 rounded-lg bg-accent px-6 py-3 font-semibold hover:bg-accent-hover"
-          >
-            {isLast ? 'Show final results' : 'Next question'}
-          </button>
-        </section>
-      )}
     </div>
   )
 }
