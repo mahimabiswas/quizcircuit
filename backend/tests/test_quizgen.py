@@ -1,10 +1,12 @@
-"""Quiz generation. Google is never called: tests fake `_call_model` or Google's client."""
+"""Quiz generation. OpenAI is never called: tests fake `_call_model` or OpenAI's client."""
 
 import base64
 import json
 from types import SimpleNamespace
 from typing import Any
 
+import httpx2
+import openai
 import pytest
 
 from app import quizgen
@@ -41,7 +43,7 @@ def true_false(options: list[str], correct: int) -> dict[str, Any]:
 
 @pytest.fixture
 def model(monkeypatch: pytest.MonkeyPatch):
-    """Replace the Gemini call. Set `model.output` to the JSON the 'model' returns."""
+    """Replace the OpenAI call. Set `model.output` to the JSON the 'model' returns."""
     fake = SimpleNamespace(output="", inputs=[])
 
     async def fake_call(parts: list[dict[str, str]]) -> str:
@@ -75,11 +77,13 @@ async def test_rejects_bad_requests_before_calling_the_model(model) -> None:
 
 def test_input_labels_each_document_then_gives_the_instructions() -> None:
     parts = build_input([NOTES, README], 10, 3)
-    assert parts[0] == {"type": "text", "text": 'Document: "notes.pdf"'}
-    assert parts[1]["type"] == "document" and parts[1]["mime_type"] == PDF
-    assert base64.b64decode(parts[1]["data"]) == NOTES.data
-    assert parts[2] == {"type": "text", "text": 'Document: "readme.md"'}
-    assert parts[3] == {"type": "text", "text": "# Raft\nLeaders take writes."}
+    assert parts[0] == {"type": "input_text", "text": 'Document: "notes.pdf"'}
+    assert parts[1]["type"] == "input_file" and parts[1]["filename"] == "notes.pdf"
+    prefix, data = parts[1]["file_data"].split(",", 1)
+    assert prefix == f"data:{PDF};base64"
+    assert base64.b64decode(data) == NOTES.data
+    assert parts[2] == {"type": "input_text", "text": 'Document: "readme.md"'}
+    assert parts[3] == {"type": "input_text", "text": "# Raft\nLeaders take writes."}
     instructions = parts[4]["text"]
     assert "exactly 10 questions" in instructions
     assert "7 multiple choice and 3 true/false" in instructions
@@ -194,20 +198,28 @@ async def test_no_usable_questions_fails_clearly(model) -> None:
         await generate(question(correct=9), model=model)
 
 
-# --- the Gemini call itself (Google's client faked) ----------------------------------
+# --- the OpenAI call itself (OpenAI's client faked) ------------------------------------
+
+REQUEST = httpx2.Request("POST", "https://api.openai.com/v1/responses")
 
 
-class FakeGoogle:
-    """Stands in for google-genai: records the request, returns or raises."""
+def status_error(cls: type[openai.APIStatusError], status: int, code: str | None = None):
+    """A real OpenAI SDK error, as the SDK would raise it for this HTTP status."""
+    body = {"message": "test error", "code": code}
+    return cls("test error", response=httpx2.Response(status, request=REQUEST), body=body)
 
-    def __init__(self, output: str = "", error: Exception | None = None) -> None:
-        self.output, self.error, self.calls, self.keys = output, error, [], []
 
-    def Client(self, api_key: str) -> SimpleNamespace:  # noqa: N802 (mirrors genai.Client)
-        self.keys.append(api_key)
-        return SimpleNamespace(
-            aio=SimpleNamespace(interactions=SimpleNamespace(create=self.create))
-        )
+class FakeOpenAI:
+    """Stands in for openai.AsyncOpenAI: records the client setup and request."""
+
+    def __init__(self, output: str) -> None:
+        self.output, self.error = output, None
+        self.clients: list[dict[str, Any]] = []
+        self.calls: list[dict[str, Any]] = []
+
+    def AsyncOpenAI(self, **kwargs: Any) -> SimpleNamespace:  # noqa: N802 (mirrors the SDK)
+        self.clients.append(kwargs)
+        return SimpleNamespace(responses=SimpleNamespace(create=self.create))
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
@@ -216,68 +228,84 @@ class FakeGoogle:
         return SimpleNamespace(output_text=self.output)
 
 
-class StatusError(Exception):
-    """Shaped like the SDK's errors: an exception carrying an HTTP status_code."""
-
-    def __init__(self, status_code: int) -> None:
-        super().__init__(f"HTTP {status_code}")
-        self.status_code = status_code
-
-
 @pytest.fixture
-def google(monkeypatch: pytest.MonkeyPatch) -> FakeGoogle:
-    fake = FakeGoogle(output=json.dumps({"questions": [question()]}))
-    monkeypatch.setattr(quizgen, "genai", fake)
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+def client(monkeypatch: pytest.MonkeyPatch) -> FakeOpenAI:
+    fake = FakeOpenAI(output=json.dumps({"questions": [question()]}))
+    monkeypatch.setattr(quizgen.openai, "AsyncOpenAI", fake.AsyncOpenAI)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.delenv("QUIZ_MODEL", raising=False)
     return fake
 
 
-async def test_calls_gemini_with_the_key_model_and_our_schema(google: FakeGoogle) -> None:
+async def test_calls_openai_with_the_key_model_and_strict_schema(client: FakeOpenAI) -> None:
     [q] = await generate_quiz([NOTES], 5)
-    call = google.calls[0]
-    assert google.keys == ["test-key"]
-    assert call["model"] == DEFAULT_MODEL == "gemini-3.1-flash-lite"
-    assert call["response_format"]["mime_type"] == "application/json"
-    assert "questions" in call["response_format"]["schema"]["properties"]
+    assert client.clients[0]["api_key"] == "test-key"
+    call = client.calls[0]
+    assert call["model"] == DEFAULT_MODEL == "gpt-6-luna"
+    assert call["input"][0]["role"] == "user"
+    assert call["input"][0]["content"][0] == {"type": "input_text", "text": 'Document: "notes.pdf"'}
+    schema_format = call["text"]["format"]
+    assert (schema_format["type"], schema_format["strict"]) == ("json_schema", True)
+    assert "questions" in schema_format["schema"]["properties"]
     assert q.options[q.correct] == "The leader"
 
 
-async def test_model_can_be_changed_by_setting(google, monkeypatch) -> None:
-    monkeypatch.setenv("QUIZ_MODEL", "gemini-something-else")
+def test_schema_is_strict_mode_compatible() -> None:
+    # OpenAI strict mode: every object lists all its fields as required and allows no others.
+    def objects(node: Any):
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                yield node
+            for value in node.values():
+                yield from objects(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from objects(value)
+
+    found = list(objects(quizgen.quiz_schema()))
+    assert len(found) == 3  # quiz, question, source
+    for obj in found:
+        assert obj["additionalProperties"] is False
+        assert set(obj["required"]) == set(obj["properties"])
+
+
+async def test_model_can_be_changed_by_setting(client, monkeypatch) -> None:
+    monkeypatch.setenv("QUIZ_MODEL", "gpt-something-else")
     await generate_quiz([NOTES], 5)
-    assert google.calls[0]["model"] == "gemini-something-else"
+    assert client.calls[0]["model"] == "gpt-something-else"
 
 
-async def test_missing_key_explains_and_calls_nothing(google, monkeypatch) -> None:
-    monkeypatch.setenv("GEMINI_API_KEY", "  ")
-    with pytest.raises(QuizGenError, match="GEMINI_API_KEY") as exc:
+async def test_missing_key_explains_and_calls_nothing(client, monkeypatch) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "  ")
+    with pytest.raises(QuizGenError, match="OPENAI_API_KEY") as exc:
         await generate_quiz([NOTES], 5)
     assert exc.value.status == 503
-    assert google.calls == []
+    assert client.calls == []
 
 
 @pytest.mark.parametrize(
     ("error", "status", "message"),
     [
-        (StatusError(429), 429, "free usage limit"),
-        (StatusError(401), 503, "key was rejected"),
-        (StatusError(403), 503, "key was rejected"),
-        (StatusError(400), 502, "couldn't read these documents"),
-        (StatusError(500), 502, "Couldn't reach"),
-        (ConnectionError("network down"), 502, "Couldn't reach"),
+        (status_error(openai.AuthenticationError, 401), 503, "key was rejected"),
+        (status_error(openai.PermissionDeniedError, 403), 503, "key was rejected"),
+        (status_error(openai.RateLimitError, 429), 429, "too many requests"),
+        (status_error(openai.RateLimitError, 429, "insufficient_quota"), 503, "out of credit"),
+        (status_error(openai.BadRequestError, 400), 502, "couldn't read these documents"),
+        (status_error(openai.InternalServerError, 500), 502, "busy right now"),
+        (openai.APIConnectionError(request=REQUEST), 502, "Couldn't reach"),
+        (openai.APITimeoutError(request=REQUEST), 502, "Couldn't reach"),
     ],
 )
-async def test_turns_google_errors_into_clear_messages(
-    google: FakeGoogle, error: Exception, status: int, message: str
+async def test_turns_openai_errors_into_clear_messages(
+    client: FakeOpenAI, error: Exception, status: int, message: str
 ) -> None:
-    google.error = error
+    client.error = error
     with pytest.raises(QuizGenError, match=message) as exc:
         await generate_quiz([NOTES], 5)
     assert exc.value.status == status
 
 
-def test_real_google_client_still_has_the_call_we_use() -> None:
-    # Builds Google's real client (sends nothing): catches SDK updates that move it.
-    client = quizgen.genai.Client(api_key="not-a-real-key")
-    assert callable(client.aio.interactions.create)
+def test_real_openai_client_still_has_the_call_we_use() -> None:
+    # Builds OpenAI's real client (sends nothing): catches SDK updates that move it.
+    real = openai.AsyncOpenAI(api_key="not-a-real-key")
+    assert callable(real.responses.create)

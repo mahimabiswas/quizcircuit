@@ -8,7 +8,7 @@ Monorepo: `backend/` (FastAPI), `frontend/` (React + TS + Tailwind), `infra/` (A
  
 Phase 1 is done: the game loop runs IN MEMORY ONLY. No database, Redis or auth yet. Do not add them unless asked.
 
-Phase 2 (in progress): AI quiz generation from uploaded documents, in `app/quizgen.py`. Default model: Gemini `gemini-3.1-flash-lite` (free tier); another Gemini model is just the `QUIZ_MODEL` setting. Only `_call_model` in `quizgen.py` talks to Google, so another provider means rewriting that one function. Keep it one file until there's a concrete reason to split it.
+Phase 2 (in progress): AI quiz generation from uploaded documents, in `app/quizgen.py`. Model: OpenAI `gpt-6-luna` via the Responses API (PDFs are sent as files; strict JSON schema). Another OpenAI model is just the `QUIZ_MODEL` setting. Only `build_input` and `_call_model` in `quizgen.py` know OpenAI's formats, so another provider means rewriting those two. Keep it one file until there's a concrete reason to split it.
  
 ## Stack (backend)
  
@@ -17,7 +17,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 ## Commands (run from backend/)
  
 - Install: `uv sync`
-- Run: `uv run python -m uvicorn app.main:app --reload`
+- Run: `uv run python -m uvicorn app.main:app --reload --env-file .env` (`.env` holds `OPENAI_API_KEY`; copy `.env.example`)
 - Test: `uv run python -m pytest`
 - Lint/format: `uv run python -m ruff check . && uv run python -m ruff format .`
 - On this Windows machine an Application Control policy blocks executables inside `.venv\Scripts`, now including `python.exe` itself, so `uv run ...` fails there. Use uv's base interpreter with the venv's packages added instead, e.g. tests:
@@ -31,7 +31,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 - `app/registry.py`: in-memory room registry (code -> room), code generation
 - `app/scoring.py`: pure scoring functions (no I/O)
 - `app/models.py`: Pydantic schemas for every WebSocket message
-- `app/quizgen.py`: AI quiz generation: settings (`QUIZ_MODEL`, `GEMINI_API_KEY`), shapes, prompt, the Gemini call, and the checks on model output
+- `app/quizgen.py`: AI quiz generation: settings (`QUIZ_MODEL`, `OPENAI_API_KEY`), shapes, prompt, the OpenAI call, and the checks on model output
 - `tests/`: mirrors app/
 ## Rules (non-negotiable)
  

@@ -3,8 +3,9 @@
 Read top to bottom: settings, shapes, prompt, the model call, checks.
 
 Changing the model:
-- another Gemini model: set QUIZ_MODEL (no code change)
-- another provider: rewrite `_call_model`, the only code that talks to Google
+- another OpenAI model: set QUIZ_MODEL (no code change)
+- another provider: rewrite `build_input` and `_call_model`, the only code that knows
+  OpenAI's formats and talks to OpenAI
 """
 
 import base64
@@ -12,16 +13,16 @@ import logging
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
-from google import genai
-from pydantic import BaseModel, Field, ValidationError
+import openai
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 log = logging.getLogger(__name__)
 
 # --- settings ---------------------------------------------------------------------
 
-DEFAULT_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_MODEL = "gpt-6-luna"
 TIMEOUT_SECONDS = 120.0
 MIN_QUESTIONS = 5
 MAX_QUESTIONS = 20
@@ -50,6 +51,9 @@ class Document:
 
 
 class Source(BaseModel):
+    # extra="forbid" makes the JSON schema strict: OpenAI then guarantees the exact shape.
+    model_config = ConfigDict(extra="forbid")
+
     file: str = Field(description="Exact file name of the document the answer comes from.")
     page: int | None = Field(
         description="Page number in the PDF where the answer is found; null for text files."
@@ -59,6 +63,8 @@ class Source(BaseModel):
 
 class Question(BaseModel):
     """A question as the model returns it, and (after checks) as we return it."""
+
+    model_config = ConfigDict(extra="forbid")
 
     text: str = Field(description="The question, short enough to read in a few seconds.")
     options: list[str] = Field(
@@ -74,6 +80,8 @@ class ModelQuestion(Question):
 
 class ModelQuiz(BaseModel):
     """The JSON the model must return. The provider enforces this shape, not the content."""
+
+    model_config = ConfigDict(extra="forbid")
 
     questions: list[ModelQuestion]
 
@@ -120,16 +128,24 @@ async def generate_quiz(
 def build_input(
     documents: Sequence[Document], count: int, true_false: int | None
 ) -> list[dict[str, str]]:
-    """Each document labelled with its file name, then the instructions."""
+    """OpenAI content parts: each document labelled with its file name, then the
+    instructions. PDFs are sent as files (the model reads them itself)."""
     parts: list[dict[str, str]] = []
     for document in documents:
-        parts.append({"type": "text", "text": f'Document: "{document.filename}"'})
+        parts.append({"type": "input_text", "text": f'Document: "{document.filename}"'})
         if document.is_pdf:
             data = base64.b64encode(document.data).decode("ascii")
-            parts.append({"type": "document", "data": data, "mime_type": PDF})
+            parts.append(
+                {
+                    "type": "input_file",
+                    "filename": document.filename,
+                    "file_data": f"data:{PDF};base64,{data}",
+                }
+            )
         else:
-            parts.append({"type": "text", "text": document.data.decode("utf-8", errors="replace")})
-    parts.append({"type": "text", "text": instructions(documents, count, true_false)})
+            text = document.data.decode("utf-8", errors="replace")
+            parts.append({"type": "input_text", "text": text})
+    parts.append({"type": "input_text", "text": instructions(documents, count, true_false)})
     return parts
 
 
@@ -164,42 +180,54 @@ Rules:
 """
 
 
-# --- the model call: the only code that talks to Google -------------------------
+# --- the model call: the only code that talks to OpenAI ---------------------------
 
 
 async def _call_model(parts: list[dict[str, str]]) -> str:
-    """Send the input to Gemini and return its raw JSON text."""
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    """Send the input to OpenAI and return the model's raw JSON text."""
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise QuizGenError(
-            "AI quiz generation isn't set up on this server (GEMINI_API_KEY is missing).", 503
+            "AI quiz generation isn't set up on this server (OPENAI_API_KEY is missing).", 503
         )
-    client = genai.Client(api_key=api_key)
+    # The SDK retries brief failures (rate limits, 5xx) itself before raising.
+    client = openai.AsyncOpenAI(api_key=api_key, timeout=TIMEOUT_SECONDS, max_retries=2)
     try:
-        interaction = await client.aio.interactions.create(
+        response = await client.responses.create(
             model=model_name(),
-            input=parts,
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": ModelQuiz.model_json_schema(),
+            input=[{"role": "user", "content": parts}],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "quiz",
+                    "strict": True,  # OpenAI guarantees the JSON matches the schema exactly
+                    "schema": quiz_schema(),
+                }
             },
-            timeout=TIMEOUT_SECONDS,
         )
-    except Exception as exc:  # the SDK's error classes are private: read the status instead
+    except openai.APIError as exc:
         raise _translate_error(exc) from exc
-    return getattr(interaction, "output_text", "") or ""
+    return response.output_text or ""
 
 
-def _translate_error(exc: Exception) -> QuizGenError:
-    status = getattr(exc, "status_code", None)
-    log.warning("Gemini request failed (status %s): %s", status, exc)
-    if status == 429:
-        return QuizGenError("The AI's free usage limit was reached. Wait a minute and retry.", 429)
-    if status in (401, 403):
-        return QuizGenError("The server's Gemini API key was rejected.", 503)
-    if isinstance(status, int) and 400 <= status < 500:
+def quiz_schema() -> dict[str, Any]:
+    """ModelQuiz as JSON schema. Strict mode needs every field listed as required, which
+    pydantic does because no field has a default, and no extra fields (extra="forbid")."""
+    return ModelQuiz.model_json_schema()
+
+
+def _translate_error(exc: openai.APIError) -> QuizGenError:
+    log.warning("OpenAI request failed: %s", exc)
+    if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError)):
+        return QuizGenError("The server's OpenAI API key was rejected.", 503)
+    if isinstance(exc, openai.RateLimitError):
+        if getattr(exc, "code", None) == "insufficient_quota":
+            return QuizGenError("The AI account is out of credit or quota.", 503)
+        return QuizGenError("The AI is getting too many requests. Wait a minute and retry.", 429)
+    if isinstance(exc, openai.BadRequestError):
         return QuizGenError("The AI couldn't read these documents. Try different files.", 502)
+    if isinstance(exc, openai.APIStatusError):  # 5xx: OpenAI is up but having problems
+        return QuizGenError("The AI service is busy right now. Try again in a minute.", 502)
     return QuizGenError("Couldn't reach the AI service. Please try again.", 502)
 
 

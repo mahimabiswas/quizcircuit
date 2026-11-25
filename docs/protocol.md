@@ -28,6 +28,45 @@ Check a room exists and is joinable. Response: `{"code": "QC-4821", "state": "LO
 
 Room codes are case-insensitive everywhere (`qc-4821` works). A room is deleted once it is FINISHED and its last connection closes.
 
+### POST /quizzes/generate
+Generate quiz questions from documents with AI. Nothing is stored; the host reviews and edits the result, then creates a room with `POST /rooms`.
+
+Request: `multipart/form-data`
+
+| field | type | notes |
+|-------|------|-------|
+| `files` | 1-3 files | `.pdf`, `.txt` or `.md`, max 10 MB each. Slides must be exported as PDF. |
+| `count` | int, 5-20 | number of questions. Default 10. |
+| `true_false` | int, optional | how many should be true/false (0 to `count`). Omit to let the AI choose (mostly multiple choice). |
+
+Response (200):
+```json
+{"questions": [
+  {
+    "text": "Who handles writes in leader-based replication?",
+    "options": ["The leader", "Any follower", "The client", "Nobody"],
+    "correct": 0,
+    "source": {"file": "notes.pdf", "page": 4, "quote": "All writes go to the leader."}
+  }
+]}
+```
+- Every question has 2-4 options; true/false questions have exactly `["True", "False"]`.
+- `source` may be `null`. `page` is set only for PDFs. `file` is the uploaded file's name (duplicates are renamed `notes (2).pdf`).
+- May return fewer questions than `count`: questions that fail the server's checks are dropped.
+- The AI can still be wrong: the host must review the questions before a game.
+
+Errors return `{"detail": "<message for the host>"}`:
+
+| status | when |
+|--------|------|
+| 400 | no files, more than 3, or an empty file |
+| 413 | a file over 10 MB |
+| 415 | not a PDF/TXT/MD file, or a `.pdf` that isn't a real PDF |
+| 422 | `count` outside 5-20, or `true_false` more than `count` |
+| 429 | the AI's free usage limit was reached; retry in a minute |
+| 502 | the AI failed or returned nothing usable; retry |
+| 503 | AI generation isn't set up on the server (no or rejected API key) |
+
 ## WebSocket
 
 Connect to `/ws/{code}`. The first message from the client must be `join`.

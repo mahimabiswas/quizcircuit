@@ -1,11 +1,18 @@
+from pathlib import PurePath
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field, StrictInt
 
+from app import quizgen
 from app.registry import RoomRegistry
 from app.rooms import Question, RoomError, State
 from app.ws import router as ws_router
+
+# Uploads for quiz generation.
+MAX_FILES = 3
+MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
+FILE_TYPES = {".pdf": quizgen.PDF, ".txt": "text/plain", ".md": "text/markdown"}
 
 
 class QuestionIn(BaseModel):
@@ -28,6 +35,10 @@ class RoomInfo(BaseModel):
     code: str
     state: State
     player_count: int
+
+
+class GeneratedQuiz(BaseModel):
+    questions: list[quizgen.Question]
 
 
 def create_app() -> FastAPI:
@@ -56,11 +67,77 @@ def create_app() -> FastAPI:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "room not found") from None
         return RoomInfo(code=room.code, state=room.state, player_count=len(room.lobby_names()))
 
+    @app.post("/quizzes/generate")
+    async def generate_quiz(
+        files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 (FastAPI form default)
+        count: Annotated[int, Form(ge=quizgen.MIN_QUESTIONS, le=quizgen.MAX_QUESTIONS)] = 10,
+        true_false: Annotated[int | None, Form(ge=0)] = None,
+    ) -> GeneratedQuiz:
+        """Generate questions from 1-3 uploaded documents. Nothing is stored."""
+        if true_false is not None and true_false > count:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "true_false can't be more than count"
+            )
+        documents = await _read_documents(files)
+        try:
+            questions = await quizgen.generate_quiz(documents, count, true_false)
+        except quizgen.QuizGenError as exc:
+            raise HTTPException(exc.status, exc.message) from None
+        return GeneratedQuiz(questions=questions)
+
     return app
 
 
 def _registry(request: Request) -> RoomRegistry:
     return request.app.state.registry
+
+
+async def _read_documents(files: list[UploadFile]) -> list[quizgen.Document]:
+    """Check the uploads before spending a model call on them."""
+    if not files:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Upload at least one file.")
+    if len(files) > MAX_FILES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Upload at most {MAX_FILES} files.")
+
+    documents: list[quizgen.Document] = []
+    taken: set[str] = set()
+    for upload in files:
+        name = _unique_name(_clean_name(upload.filename), taken)
+        mime_type = FILE_TYPES.get(PurePath(name).suffix.lower())
+        if mime_type is None:
+            raise HTTPException(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                f'"{name}" isn\'t a PDF, TXT or MD file. Export slides as PDF first.',
+            )
+        data = await upload.read(MAX_FILE_BYTES + 1)  # never read more than we accept
+        if len(data) > MAX_FILE_BYTES:
+            raise HTTPException(
+                status.HTTP_413_CONTENT_TOO_LARGE, f'"{name}" is larger than 10 MB.'
+            )
+        if not data.strip():
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, f'"{name}" is empty.')
+        if mime_type == quizgen.PDF and not data.startswith(b"%PDF-"):
+            raise HTTPException(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f'"{name}" isn\'t a valid PDF.'
+            )
+        documents.append(quizgen.Document(name, mime_type, data))
+    return documents
+
+
+def _clean_name(filename: str | None) -> str:
+    """Just the file name (no folders), at most 100 characters."""
+    name = PurePath((filename or "").replace("\\", "/")).name.strip()
+    return (name or "document")[:100]
+
+
+def _unique_name(name: str, taken: set[str]) -> str:
+    """Sources cite files by name, so two uploads can't share one: "notes (2).pdf"."""
+    path, n, candidate = PurePath(name), 2, name
+    while candidate.casefold() in taken:
+        candidate = f"{path.stem} ({n}){path.suffix}"
+        n += 1
+    taken.add(candidate.casefold())
+    return candidate
 
 
 app = create_app()

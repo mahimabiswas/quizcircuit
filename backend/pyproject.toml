@@ -5,7 +5,8 @@ description = "QuizCircuit game server"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
-    "google-genai>=3.6.1",
+    "openai>=3.59.0",
+    "python-multipart>=0.0.34",
     "uvicorn[standard]>=0.32",
 ]
 
