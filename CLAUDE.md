@@ -20,8 +20,9 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 - Run: `uv run python -m uvicorn app.main:app --reload --env-file .env` (`.env` holds `OPENAI_API_KEY`; copy `.env.example`)
 - Test: `uv run python -m pytest`
 - Lint/format: `uv run python -m ruff check . && uv run python -m ruff format .`
-- On this Windows machine an Application Control policy blocks executables inside `.venv\Scripts`, now including `python.exe` itself, so `uv run ...` fails there. Use uv's base interpreter with the venv's packages added instead, e.g. tests:
-  `& "$env:APPDATA\uv\python\cpython-3.12-windows-x86_64-none\python.exe" -c "import site, sys; site.addsitedir(r'.venv\Lib\site-packages'); import pytest; sys.exit(pytest.main(['-q']))"`
+- On this Windows machine an Application Control policy blocks executables inside `.venv\Scripts`, now including `python.exe` itself, so `uv run ...` fails there. Use uv's base interpreter with the venv's packages on `PYTHONPATH` instead (once per terminal):
+  `$env:PYTHONPATH = (Resolve-Path .venv\Lib\site-packages).Path; $py = "$env:APPDATA\uv\python\cpython-3.12-windows-x86_64-none\python.exe"`
+  then `& $py -m uvicorn app.main:app --reload --env-file .env`, `& $py -m pytest`, `& $py -m ruff check .`
 ## Layout
  
 - `app/main.py`: FastAPI app, REST routes
@@ -48,6 +49,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 ## Frontend
  
 - Commands (run from frontend/): `npm run dev`, `npm test`, `npm run build`, `npm run lint`.
+- Host flow: `/host` (HostCreateFlow: Create a quiz -> Generating -> Review your quiz) -> `/host/:code` (HostGame). Players: `/` and `/join/:code` (PlayerGame).
 - Colours and fonts come from the `@theme` tokens in `src/index.css`. Never use raw hex values in components.
 - Every screen must work on both a phone and a laptop. Build phone-first, then adapt from the `sm` breakpoint (640px) up.
 - Build one screen per step, with tests, and stop for review before the next.

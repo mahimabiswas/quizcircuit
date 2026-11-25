@@ -41,6 +41,22 @@ export interface CreateRoomResponse {
   host_token: string // secret: whoever has it can run the game
 }
 
+/** Where in the uploaded documents a generated question's answer comes from. */
+export interface QuestionSource {
+  file: string
+  page: number | null // PDFs only
+  quote: string
+}
+
+/** A question from POST /quizzes/generate. */
+export interface GeneratedQuestion extends QuestionInput {
+  source: QuestionSource | null
+}
+
+export interface GenerateQuizResponse {
+  questions: GeneratedQuestion[]
+}
+
 // --- server -> client ---------------------------------------------------------
 
 export interface JoinedMessage {

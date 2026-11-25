@@ -4,6 +4,7 @@ import {
   cleanQuestion,
   questionKind,
   questionProblem,
+  sourceFileCount,
   summarize,
   toCreateRoomRequest,
   toDraft,
@@ -26,6 +27,27 @@ describe('toDraft / toCreateRoomRequest', () => {
 
   it('round-trips to exactly what the backend expects', () => {
     expect(toCreateRoomRequest(toDraft(QUIZ))).toEqual(QUIZ)
+  })
+
+  it('keeps sources for the review page but never sends them to the game', () => {
+    const source = { file: 'notes.pdf', page: 4, quote: 'Writes go to the leader.' }
+    const draft = toDraft({ time_limit: 20, questions: [{ ...QUIZ.questions[0], source }] })
+    expect(draft.questions[0].source).toEqual(source)
+    expect(toCreateRoomRequest(draft).questions[0]).toEqual(QUIZ.questions[0])
+  })
+
+  it('counts the different files the questions cite', () => {
+    const cite = (file: string) => ({ file, page: null, quote: '' })
+    const draft = toDraft({
+      time_limit: 20,
+      questions: [
+        { ...QUIZ.questions[0], source: cite('a.pdf') },
+        { ...QUIZ.questions[1], source: cite('a.pdf') },
+        { ...QUIZ.questions[2], source: cite('b.md') },
+        { ...QUIZ.questions[0], source: null },
+      ],
+    })
+    expect(sourceFileCount(draft)).toBe(2)
   })
 
   it('copies the options, so editing the draft never changes the original quiz', () => {

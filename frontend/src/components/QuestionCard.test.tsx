@@ -48,6 +48,23 @@ describe('QuestionCard: viewing', () => {
     expect(options[0]).not.toHaveTextContent('Correct')
   })
 
+  it('shows where the answer comes from', () => {
+    renderCard({
+      question: {
+        ...QUESTION,
+        source: { file: 'notes.pdf', page: 4, quote: 'Vector clocks track causality.' },
+      },
+    })
+    expect(screen.getByText(/^Source:/)).toHaveTextContent(
+      'Source: notes.pdf, p.4 · Vector clocks track causality.',
+    )
+  })
+
+  it('leaves out the page for text files, and the line when there is no source', () => {
+    renderCard({ question: { ...QUESTION, source: { file: 'notes.md', page: null, quote: '' } } })
+    expect(screen.getByText(/^Source:/)).toHaveTextContent(/^Source: notes\.md$/)
+  })
+
   it('labels True / False questions', () => {
     renderCard({ question: { ...QUESTION, options: ['True', 'False'], correct: 0 } })
     expect(screen.getByText('True / False')).toBeInTheDocument()

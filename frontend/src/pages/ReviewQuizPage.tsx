@@ -1,6 +1,5 @@
-// "Review your quiz": the host checks and edits the questions, picks the time
-// per question, then creates the game. Today the questions start from the
-// sample quiz; later they will come from AI generation.
+// "Review your quiz": the host checks and edits the AI's questions, picks the
+// time per question, then creates the game.
 
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -10,21 +9,25 @@ import { QuestionCard } from '../components/QuestionCard'
 import { saveHostToken } from '../game/hostToken'
 import {
   TIME_LIMITS,
+  sourceFileCount,
   summarize,
   toCreateRoomRequest,
   toDraft,
   type DraftQuestion,
   type QuizDraft,
+  type SourcedQuestion,
 } from '../host/quizDraft'
-import { SAMPLE_QUIZ } from '../host/sampleQuiz'
-import type { CreateRoomRequest } from '../protocol'
 
 interface ReviewQuizPageProps {
   /** The questions to start from. */
-  initialQuiz?: CreateRoomRequest
+  initialQuiz: { time_limit: number; questions: SourcedQuestion[] }
+  /** How many questions the host asked for: if fewer came back, say so. */
+  requestedCount?: number
+  /** Go back and generate from different files. */
+  onStartOver?: () => void
 }
 
-export function ReviewQuizPage({ initialQuiz = SAMPLE_QUIZ }: ReviewQuizPageProps) {
+export function ReviewQuizPage({ initialQuiz, requestedCount, onStartOver }: ReviewQuizPageProps) {
   const navigate = useNavigate()
   // The function form runs toDraft once, on the first render only.
   const [draft, setDraft] = useState<QuizDraft>(() => toDraft(initialQuiz))
@@ -65,10 +68,28 @@ export function ReviewQuizPage({ initialQuiz = SAMPLE_QUIZ }: ReviewQuizPageProp
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-10 sm:px-8">
-        <h1 className="text-2xl font-bold">Review your quiz</h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-bold">Review your quiz</h1>
+          {onStartOver && (
+            <button
+              type="button"
+              onClick={onStartOver}
+              className="text-sm text-accent hover:underline"
+            >
+              ← Upload different files
+            </button>
+          )}
+        </div>
         <p className="mt-2 text-muted">
-          Check each question before you share the game. Edit or delete anything that looks off.
+          Check each question and its source before you share the game. The AI can make
+          mistakes: edit or delete anything that looks off.
         </p>
+        {requestedCount !== undefined && initialQuiz.questions.length < requestedCount && (
+          <p className="mt-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted">
+            {initialQuiz.questions.length} of {requestedCount} questions passed our checks. The
+            others were left out.
+          </p>
+        )}
 
         {/* Laptops (lg): questions + a summary column that stays in view. Smaller: stacked. */}
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem] lg:items-start">
@@ -114,6 +135,7 @@ interface SummaryProps {
 
 function Summary({ draft, onTimeLimit, editing, creating, error, onCreate }: SummaryProps) {
   const summary = summarize(draft)
+  const sources = sourceFileCount(draft)
 
   return (
     <aside className="rounded-2xl border border-border bg-surface p-5 lg:sticky lg:top-6">
@@ -122,6 +144,7 @@ function Summary({ draft, onTimeLimit, editing, creating, error, onCreate }: Sum
         <Row label="Questions" value={summary.total} />
         <Row label="Multiple choice" value={summary.multipleChoice} />
         <Row label="True / False" value={summary.trueFalse} />
+        {sources > 0 && <Row label="Sources" value={`${sources} ${sources === 1 ? 'file' : 'files'}`} />}
         <Row label="Estimated time" value={`~${summary.minutes} min`} />
       </dl>
 

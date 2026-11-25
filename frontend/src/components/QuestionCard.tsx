@@ -73,6 +73,22 @@ function View({ question, locked, canDelete, onEdit, onDelete }: QuestionCardPro
         })}
       </ul>
 
+      {question.source && (
+        <p className="mt-3 text-xs text-muted">
+          Source:{' '}
+          <span className="text-text">
+            {question.source.file}
+            {question.source.page !== null && `, p.${question.source.page}`}
+          </span>
+          {question.source.quote && (
+            <>
+              {' · '}
+              <q className="italic">{question.source.quote}</q>
+            </>
+          )}
+        </p>
+      )}
+
       {!locked && (
         <div className="mt-4 flex gap-4 text-sm">
           <button type="button" onClick={onEdit} className="font-medium text-accent hover:underline">

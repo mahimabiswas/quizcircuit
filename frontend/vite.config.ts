@@ -11,6 +11,7 @@ export default defineConfig({
     // The browser only ever talks to the Vite origin, so the backend needs no CORS.
     proxy: {
       '/rooms': BACKEND,
+      '/quizzes': BACKEND,
       '/ws': { target: BACKEND, ws: true },
     },
   },

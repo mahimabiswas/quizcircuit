@@ -1,5 +1,5 @@
 // "Create a quiz": the host uploads documents and picks how many questions and
-// which kinds; the AI then writes the questions (wired up in the next step).
+// which kinds; the AI then writes the questions (see HostCreateFlow).
 
 import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { Logo } from '../components/Logo'
@@ -18,18 +18,25 @@ import {
 
 interface CreateQuizPageProps {
   onGenerate: (request: QuizRequest) => void
+  /** The previous request, to restore the files and settings (after an error or "start over"). */
+  initial?: QuizRequest | null
   /** True while the questions are being generated. */
   busy?: boolean
   /** Why the last attempt failed, if it did. */
   error?: string | null
 }
 
-export function CreateQuizPage({ onGenerate, busy = false, error = null }: CreateQuizPageProps) {
-  const [files, setFiles] = useState<File[]>([])
+export function CreateQuizPage({
+  onGenerate,
+  initial = null,
+  busy = false,
+  error = null,
+}: CreateQuizPageProps) {
+  const [files, setFiles] = useState<File[]>(initial?.files ?? [])
   const [problems, setProblems] = useState<string[]>([])
-  const [count, setCount] = useState(DEFAULT_QUESTIONS)
-  const [mix, setMix] = useState<'auto' | 'custom'>('auto')
-  const [trueFalse, setTrueFalse] = useState(3)
+  const [count, setCount] = useState(initial?.count ?? DEFAULT_QUESTIONS)
+  const [mix, setMix] = useState<'auto' | 'custom'>(initial?.trueFalse != null ? 'custom' : 'auto')
+  const [trueFalse, setTrueFalse] = useState(initial?.trueFalse ?? 3)
 
   // In Custom mode the two kinds always add up to the total.
   const customTrueFalse = Math.min(trueFalse, count)
