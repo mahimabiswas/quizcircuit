@@ -1,5 +1,6 @@
 // Small helpers around the browser WebSocket.
 
+import { API_BASE } from '../config'
 import type { ClientMessage, ServerMessage } from '../protocol'
 
 /** The parts of WebSocket we use. Tests pass a fake that has the same shape. */
@@ -18,10 +19,19 @@ export const OPEN = 1 // WebSocket.OPEN
 
 export const browserSocket: SocketFactory = (url) => new WebSocket(url)
 
-/** ws://<this site>/ws/QC-4821. In dev, Vite forwards /ws to the backend. */
-export function socketUrl(code: string, location: Location = window.location): string {
+/**
+ * With a backend URL (production): https://backend/... -> wss://backend/ws/QC-4821.
+ * Without one (dev): ws://<this site>/ws/QC-4821, which Vite forwards to the backend.
+ */
+export function socketUrl(
+  code: string,
+  base: string = API_BASE,
+  location: Location = window.location,
+): string {
+  const path = `/ws/${encodeURIComponent(code)}`
+  if (base) return base.replace(/^http/, 'ws') + path // http->ws, https->wss
   const scheme = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${scheme}://${location.host}/ws/${encodeURIComponent(code)}`
+  return `${scheme}://${location.host}${path}`
 }
 
 export function send(socket: SocketLike, message: ClientMessage): void {

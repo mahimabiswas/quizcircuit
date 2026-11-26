@@ -1,5 +1,7 @@
-// REST calls. Paths are relative: in dev, Vite forwards /rooms and /quizzes to the backend.
+// REST calls. apiUrl adds the backend's address in production; in dev the paths stay
+// relative and Vite forwards /rooms and /quizzes to the backend.
 
+import { apiUrl } from './config'
 import type { QuizRequest } from './host/uploads'
 import type {
   CreateRoomRequest,
@@ -19,7 +21,7 @@ export class ApiError extends Error {
 }
 
 export async function createRoom(body: CreateRoomRequest): Promise<CreateRoomResponse> {
-  const response = await fetch('/rooms', {
+  const response = await fetch(apiUrl('/rooms'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -44,7 +46,7 @@ export async function generateQuiz(
 
   let response: Response
   try {
-    response = await fetch('/quizzes/generate', { method: 'POST', body: form, signal })
+    response = await fetch(apiUrl('/quizzes/generate'), { method: 'POST', body: form, signal })
   } catch (error) {
     if (signal?.aborted) throw error // the host cancelled: not a failure to report
     throw new ApiError(0, "Couldn't reach the server. Is the backend running?")

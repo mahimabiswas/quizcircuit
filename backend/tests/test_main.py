@@ -91,3 +91,39 @@ def test_get_room_shows_started_state(client: TestClient) -> None:
 
 def test_get_missing_room(client: TestClient) -> None:
     assert client.get("/rooms/QC-0000").status_code == 404
+
+
+VERCEL = "https://quizcircuit.vercel.app"
+
+
+def preflight(client: TestClient, origin: str):
+    """What the browser asks before a cross-site POST /rooms."""
+    return client.options(
+        "/rooms",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+
+def test_cors_allows_the_frontend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FRONTEND_ORIGIN", f"{VERCEL}/")  # a trailing slash is fine
+    client = TestClient(create_app())
+    assert preflight(client, VERCEL).headers["access-control-allow-origin"] == VERCEL
+    response = client.get("/health", headers={"Origin": VERCEL})
+    assert response.headers["access-control-allow-origin"] == VERCEL
+
+
+def test_cors_rejects_other_sites(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FRONTEND_ORIGIN", VERCEL)
+    client = TestClient(create_app())
+    response = preflight(client, "https://evil.example")
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_no_cors_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FRONTEND_ORIGIN", raising=False)
+    response = TestClient(create_app()).get("/health", headers={"Origin": VERCEL})
+    assert "access-control-allow-origin" not in response.headers

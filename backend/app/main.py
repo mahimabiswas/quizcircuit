@@ -1,7 +1,9 @@
+import os
 from pathlib import PurePath
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StrictInt
 
 from app import quizgen
@@ -46,6 +48,16 @@ def create_app() -> FastAPI:
     app.state.registry = RoomRegistry()
     app.include_router(ws_router)
 
+    # The frontend is on another domain in production (Vercel), so browsers need
+    # permission to call this API from it. Unset in dev: Vite's proxy makes it one origin.
+    if origins := frontend_origins():
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type"],
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -86,6 +98,12 @@ def create_app() -> FastAPI:
         return GeneratedQuiz(questions=questions)
 
     return app
+
+
+def frontend_origins() -> list[str]:
+    """FRONTEND_ORIGIN, e.g. "https://quizcircuit.vercel.app" (comma-separate several)."""
+    raw = os.environ.get("FRONTEND_ORIGIN", "")
+    return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
 
 
 def _registry(request: Request) -> RoomRegistry:

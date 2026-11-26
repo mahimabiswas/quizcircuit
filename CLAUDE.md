@@ -54,6 +54,12 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 - Every screen must work on both a phone and a laptop. Build phone-first, then adapt from the `sm` breakpoint (640px) up.
 - Build one screen per step, with tests, and stop for review before the next.
  
+## Deploy
+
+- Backend: Render web service, root `backend`. Env: `OPENAI_API_KEY`, `FRONTEND_ORIGIN` (the Vercel URL; turns on CORS for that origin only).
+- Frontend: Vercel, root `frontend`. Env: `VITE_API_URL` (the Render URL; read at build time). REST and WebSockets go straight to it (Vercel can't proxy WebSockets). `vercel.json` sends every path to `index.html`.
+- Dev needs neither variable: paths stay relative and the Vite proxy forwards them.
+
 ## Working style
  
 - Small, focused changes. One task per commit.
