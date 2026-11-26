@@ -163,6 +163,45 @@ def test_model_output_with_no_usable_questions_is_a_502(client, model) -> None:
     assert "No usable questions" in response.json()["detail"]
 
 
+# --- rate limit: 3 generations per IP per 24 hours ---------------------------------
+
+
+def test_the_fourth_generation_from_one_ip_is_refused(client, model) -> None:
+    assert [post(client, [pdf()]).status_code for _ in range(3)] == [200, 200, 200]
+    response = post(client, [pdf()])
+    assert response.status_code == 429
+    assert response.json()["detail"] == (
+        "You've used your 3 quiz generations for today. Try again in 24 hours."
+    )
+    assert int(response.headers["Retry-After"]) > 23 * 60 * 60
+    assert len(model.inputs) == 3  # the refused one never reached the model
+
+
+def test_another_ip_still_has_its_turns(client, model) -> None:
+    for _ in range(3):
+        post(client, [pdf()])
+    other = TestClient(client.app, client=("203.0.113.9", 50000))
+    assert post(other, [pdf()]).status_code == 200
+
+
+def test_bad_uploads_and_failed_generations_dont_use_a_turn(client, model) -> None:
+    for _ in range(3):
+        post(client, [pdf("notes.pdf", b"not a pdf")])  # 415, rejected before the limit
+    model.error = quizgen.QuizGenError("The AI is busy right now.", 502)
+    for _ in range(3):
+        post(client, [pdf()])  # 502: the turn is given back
+    model.error = None
+    assert [post(client, [pdf()]).status_code for _ in range(3)] == [200, 200, 200]
+
+
+@pytest.mark.parametrize(
+    ("seconds", "text"),
+    [(5, "1 minute"), (61, "2 minutes"), (3599, "1 hour"), (3600, "1 hour"), (3601, "2 hours")],
+)
+def test_wait_is_rounded_up_into_words(seconds: float, text: str) -> None:
+    assert main._how_long(seconds) == text
+
+
 def test_without_an_api_key_it_explains(client, monkeypatch) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     response = post(client, [pdf()])

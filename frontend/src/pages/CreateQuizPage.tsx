@@ -24,6 +24,8 @@ interface CreateQuizPageProps {
   busy?: boolean
   /** Why the last attempt failed, if it did. */
   error?: string | null
+  /** A bold heading above the error, e.g. "Rate limit reached". */
+  errorTitle?: string | null
 }
 
 export function CreateQuizPage({
@@ -31,6 +33,7 @@ export function CreateQuizPage({
   initial = null,
   busy = false,
   error = null,
+  errorTitle = null,
 }: CreateQuizPageProps) {
   const [files, setFiles] = useState<File[]>(initial?.files ?? [])
   const [problems, setProblems] = useState<string[]>([])
@@ -163,9 +166,10 @@ export function CreateQuizPage({
           )}
 
           {error && (
-            <p role="alert" className="rounded-lg border border-wrong/40 bg-wrong/10 px-3 py-2 text-sm text-wrong">
-              {error}
-            </p>
+            <div role="alert" className="rounded-lg border border-wrong/40 bg-wrong/10 px-3 py-2 text-sm text-wrong">
+              {errorTitle && <p className="font-semibold">{errorTitle}</p>}
+              <p>{error}</p>
+            </div>
           )}
 
           <div className="flex justify-end border-t border-border pt-5">

@@ -99,6 +99,26 @@ describe('HostCreateFlow', () => {
     expect(screen.getByRole('button', { name: 'Generate quiz' })).toBeEnabled()
   })
 
+  it('says when the daily generation limit is reached', async () => {
+    const server = controllableFetch()
+    await uploadAndGenerate()
+    await server.respond(
+      { detail: "You've used your 3 quiz generations for today. Try again in 24 hours." },
+      429,
+    )
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('Rate limit reached')
+    expect(alert).toHaveTextContent('Try again in 24 hours.')
+  })
+
+  it('gives other errors no rate-limit heading', async () => {
+    const server = controllableFetch()
+    await uploadAndGenerate()
+    await server.respond({ detail: 'The AI service is busy right now.' }, 502)
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Rate limit reached')
+  })
+
   it('cancels a generation in progress', async () => {
     const server = controllableFetch()
     const user = await uploadAndGenerate()

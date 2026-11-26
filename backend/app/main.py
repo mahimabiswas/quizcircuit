@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, StrictInt
 
 from app import quizgen
+from app.ratelimit import RateLimiter
 from app.registry import RoomRegistry
 from app.rooms import Question, RoomError, State
 from app.ws import router as ws_router
@@ -15,6 +16,10 @@ from app.ws import router as ws_router
 MAX_FILES = 3
 MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 FILE_TYPES = {".pdf": quizgen.PDF, ".txt": "text/plain", ".md": "text/markdown"}
+
+# Each generation costs an OpenAI call, so each IP gets a few per rolling 24 hours.
+GENERATIONS_PER_IP = 3
+GENERATION_WINDOW_SECONDS = 24 * 60 * 60
 
 
 class QuestionIn(BaseModel):
@@ -46,6 +51,7 @@ class GeneratedQuiz(BaseModel):
 def create_app() -> FastAPI:
     app = FastAPI(title="QuizCircuit")
     app.state.registry = RoomRegistry()
+    app.state.generate_limiter = RateLimiter(GENERATIONS_PER_IP, GENERATION_WINDOW_SECONDS)
     app.include_router(ws_router)
 
     # The frontend is on another domain in production (Vercel), so browsers need
@@ -81,6 +87,7 @@ def create_app() -> FastAPI:
 
     @app.post("/quizzes/generate")
     async def generate_quiz(
+        request: Request,
         files: Annotated[list[UploadFile], File()] = [],  # noqa: B006 (FastAPI form default)
         count: Annotated[int, Form(ge=quizgen.MIN_QUESTIONS, le=quizgen.MAX_QUESTIONS)] = 10,
         true_false: Annotated[int | None, Form(ge=0)] = None,
@@ -90,10 +97,22 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, "true_false can't be more than count"
             )
-        documents = await _read_documents(files)
+        documents = await _read_documents(files)  # bad uploads don't use up a turn
+
+        limiter: RateLimiter = request.app.state.generate_limiter
+        ip = request.client.host if request.client else "unknown"
+        wait = limiter.take(ip)
+        if wait is not None:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                f"You've used your {limiter.limit} quiz generations for today. "
+                f"Try again in {_how_long(wait)}.",
+                headers={"Retry-After": str(int(wait) + 1)},
+            )
         try:
             questions = await quizgen.generate_quiz(documents, count, true_false)
         except quizgen.QuizGenError as exc:
+            limiter.give_back(ip)  # the AI failed, so the host gets this turn back
             raise HTTPException(exc.status, exc.message) from None
         return GeneratedQuiz(questions=questions)
 
@@ -104,6 +123,15 @@ def frontend_origins() -> list[str]:
     """FRONTEND_ORIGIN, e.g. "https://quizcircuit.vercel.app" (comma-separate several)."""
     raw = os.environ.get("FRONTEND_ORIGIN", "")
     return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
+
+def _how_long(seconds: float) -> str:
+    """3600 -> "1 hour", 300 -> "5 minutes" (rounded up; at least 1 minute)."""
+    minutes = max(1, -(-int(seconds) // 60))
+    if minutes < 60:
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    hours = -(-minutes // 60)
+    return f"{hours} hour{'s' if hours != 1 else ''}"
 
 
 def _registry(request: Request) -> RoomRegistry:

@@ -17,6 +17,8 @@ export function HostCreateFlow() {
   const [request, setRequest] = useState<QuizRequest | null>(null)
   const [questions, setQuestions] = useState<GeneratedQuestion[]>([])
   const [error, setError] = useState<string | null>(null)
+  // 429: this IP used its generations for the day (or OpenAI is rate-limiting us).
+  const [rateLimited, setRateLimited] = useState(false)
   // The in-flight request, so Cancel (or leaving the page) can stop it.
   const inFlight = useRef<AbortController | null>(null)
 
@@ -27,6 +29,7 @@ export function HostCreateFlow() {
     inFlight.current = controller
     setRequest(next)
     setError(null)
+    setRateLimited(false)
     setScreen('generating')
     try {
       setQuestions(await generateQuiz(next, controller.signal))
@@ -36,6 +39,7 @@ export function HostCreateFlow() {
       setError(
         caught instanceof ApiError ? caught.message : 'Something went wrong. Please try again.',
       )
+      setRateLimited(caught instanceof ApiError && caught.status === 429)
       setScreen('form')
     } finally {
       if (inFlight.current === controller) inFlight.current = null
@@ -67,5 +71,12 @@ export function HostCreateFlow() {
     )
   }
 
-  return <CreateQuizPage onGenerate={generate} initial={request} error={error} />
+  return (
+    <CreateQuizPage
+      onGenerate={generate}
+      initial={request}
+      error={error}
+      errorTitle={rateLimited ? 'Rate limit reached' : null}
+    />
+  )
 }

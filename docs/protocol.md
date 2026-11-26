@@ -54,6 +54,7 @@ Response (200):
 - `source` may be `null`. `page` is set only for PDFs. `file` is the uploaded file's name (duplicates are renamed `notes (2).pdf`).
 - May return fewer questions than `count`: questions that fail the server's checks are dropped.
 - The AI can still be wrong: the host must review the questions before a game.
+- Limited to 3 generations per IP address in any rolling 24 hours. Rejected uploads (400/413/415/422) and failed generations (502/503) don't count. Counts are in memory and reset on restart.
 
 Errors return `{"detail": "<message for the host>"}`:
 
@@ -63,7 +64,7 @@ Errors return `{"detail": "<message for the host>"}`:
 | 413 | a file over 10 MB |
 | 415 | not a PDF/TXT/MD file, or a `.pdf` that isn't a real PDF |
 | 422 | `count` outside 5-20, or `true_false` more than `count` |
-| 429 | the AI's free usage limit was reached; retry in a minute |
+| 429 | this IP has used its 3 generations in the last 24 hours (`Retry-After` header gives the seconds to wait), or the AI provider is rate-limiting us; retry in a minute |
 | 502 | the AI failed or returned nothing usable; retry |
 | 503 | AI generation isn't set up on the server (no or rejected API key) |
 

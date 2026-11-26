@@ -31,6 +31,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 - `app/live.py`: LiveRoom: a Room's connections, broadcasts, timers and lock
 - `app/registry.py`: in-memory room registry (code -> room), code generation
 - `app/scoring.py`: pure scoring functions (no I/O)
+- `app/ratelimit.py`: in-memory per-key rate limit (used per IP on quiz generation)
 - `app/models.py`: Pydantic schemas for every WebSocket message
 - `app/quizgen.py`: AI quiz generation: settings (`QUIZ_MODEL`, `OPENAI_API_KEY`), shapes, prompt, the OpenAI call, and the checks on model output
 - `tests/`: mirrors app/
@@ -57,6 +58,7 @@ Python 3.12, FastAPI, WebSockets (native FastAPI), Pydantic v2, pytest + pytest-
 ## Deploy
 
 - Backend: Render web service, root `backend`. Env: `OPENAI_API_KEY`, `FRONTEND_ORIGIN` (the Vercel URL; turns on CORS for that origin only).
+  Start command: `.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"`. The proxy flags give the real client IP, which the per-IP generation limit (`app/ratelimit.py`, 3 per 24 h) needs. Only use them behind a proxy like Render.
 - Frontend: Vercel, root `frontend`. Env: `VITE_API_URL` (the Render URL; read at build time). REST and WebSockets go straight to it (Vercel can't proxy WebSockets). `vercel.json` sends every path to `index.html`.
 - Dev needs neither variable: paths stay relative and the Vite proxy forwards them.
 
